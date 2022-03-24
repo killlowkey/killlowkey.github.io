@@ -1,0 +1,490 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=2">
+<meta name="theme-color" content="#222">
+<meta name="generator" content="Hexo 5.3.0">
+  <link rel="apple-touch-icon" sizes="180x180" href="/images/apple-touch-icon-next.png">
+  <link rel="icon" type="image/png" sizes="32x32" href="/images/favicon-32x32-next.png">
+  <link rel="icon" type="image/png" sizes="16x16" href="/images/favicon-16x16-next.png">
+  <link rel="mask-icon" href="/images/logo.svg" color="#222">
+
+<link rel="stylesheet" href="/css/main.css">
+
+
+<link rel="stylesheet" href="/lib/font-awesome/css/font-awesome.min.css">
+
+<script id="hexo-configurations">
+    var NexT = window.NexT || {};
+    var CONFIG = {"hostname":"example.com","root":"/","scheme":"Gemini","version":"7.8.0","exturl":false,"sidebar":{"position":"left","display":"post","padding":18,"offset":12,"onmobile":false},"copycode":{"enable":false,"show_result":false,"style":null},"back2top":{"enable":true,"sidebar":false,"scrollpercent":false},"bookmark":{"enable":false,"color":"#222","save":"auto"},"fancybox":false,"mediumzoom":false,"lazyload":false,"pangu":false,"comments":{"style":"tabs","active":null,"storage":true,"lazyload":false,"nav":null},"algolia":{"hits":{"per_page":10},"labels":{"input_placeholder":"Search for Posts","hits_empty":"We didn't find any results for the search: ${query}","hits_stats":"${hits} results found in ${time} ms"}},"localsearch":{"enable":true,"trigger":"auto","top_n_per_article":1,"unescape":false,"preload":false},"motion":{"enable":true,"async":false,"transition":{"post_block":"fadeIn","post_header":"slideDownIn","post_body":"slideDownIn","coll_header":"slideLeftIn","sidebar":"slideUpIn"}},"path":"search.xml"};
+  </script>
+
+  <meta name="description" content="本文对应源码：https:&#x2F;&#x2F;github.com&#x2F;killlowkey&#x2F;parse-curl  cURL 是什么维基百科：“cURL是一个命令行工具，用于使用URL语法获取或发送数据”，简而言之，可以使用 cURL 发送 http&#x2F;https 请求。">
+<meta property="og:type" content="article">
+<meta property="og:title" content="使用 golang 实现解析 cURL">
+<meta property="og:url" content="http://example.com/2021/11/06/%E4%BD%BF%E7%94%A8-golang-%E5%AE%9E%E7%8E%B0%E8%A7%A3%E6%9E%90-cURL/index.html">
+<meta property="og:site_name" content="predicate | blog">
+<meta property="og:description" content="本文对应源码：https:&#x2F;&#x2F;github.com&#x2F;killlowkey&#x2F;parse-curl  cURL 是什么维基百科：“cURL是一个命令行工具，用于使用URL语法获取或发送数据”，简而言之，可以使用 cURL 发送 http&#x2F;https 请求。">
+<meta property="og:locale" content="zh_CN">
+<meta property="article:published_time" content="2021-11-06T08:51:00.000Z">
+<meta property="article:modified_time" content="2022-03-24T04:57:14.180Z">
+<meta property="article:author" content="predicate">
+<meta property="article:tag" content="golang">
+<meta property="article:tag" content="cURL">
+<meta name="twitter:card" content="summary">
+
+<link rel="canonical" href="http://example.com/2021/11/06/%E4%BD%BF%E7%94%A8-golang-%E5%AE%9E%E7%8E%B0%E8%A7%A3%E6%9E%90-cURL/">
+
+
+<script id="page-configurations">
+  // https://hexo.io/docs/variables.html
+  CONFIG.page = {
+    sidebar: "",
+    isHome : false,
+    isPost : true,
+    lang   : 'zh-CN'
+  };
+</script>
+
+  <title>使用 golang 实现解析 cURL | predicate | blog</title>
+  
+
+
+
+
+
+
+  <noscript>
+  <style>
+  .use-motion .brand,
+  .use-motion .menu-item,
+  .sidebar-inner,
+  .use-motion .post-block,
+  .use-motion .pagination,
+  .use-motion .comments,
+  .use-motion .post-header,
+  .use-motion .post-body,
+  .use-motion .collection-header { opacity: initial; }
+
+  .use-motion .site-title,
+  .use-motion .site-subtitle {
+    opacity: initial;
+    top: initial;
+  }
+
+  .use-motion .logo-line-before i { left: initial; }
+  .use-motion .logo-line-after i { right: initial; }
+  </style>
+</noscript>
+
+</head>
+
+<body itemscope itemtype="http://schema.org/WebPage">
+  <div class="container use-motion">
+    <div class="headband"></div>
+
+    <header class="header" itemscope itemtype="http://schema.org/WPHeader">
+      <div class="header-inner"><div class="site-brand-container">
+  <div class="site-nav-toggle">
+    <div class="toggle" aria-label="切换导航栏">
+      <span class="toggle-line toggle-line-first"></span>
+      <span class="toggle-line toggle-line-middle"></span>
+      <span class="toggle-line toggle-line-last"></span>
+    </div>
+  </div>
+
+  <div class="site-meta">
+
+    <a href="/" class="brand" rel="start">
+      <span class="logo-line-before"><i></i></span>
+      <h1 class="site-title">predicate | blog</h1>
+      <span class="logo-line-after"><i></i></span>
+    </a>
+      <p class="site-subtitle" itemprop="description">你好，世界！</p>
+  </div>
+
+  <div class="site-nav-right">
+    <div class="toggle popup-trigger">
+        <i class="fa fa-search fa-fw fa-lg"></i>
+    </div>
+  </div>
+</div>
+
+
+
+
+<nav class="site-nav">
+  <ul id="menu" class="menu">
+        <li class="menu-item menu-item-home">
+
+    <a href="/" rel="section"><i class="fa fa-fw fa-home"></i>首页</a>
+
+  </li>
+        <li class="menu-item menu-item-categories">
+
+    <a href="/categories/" rel="section"><i class="fa fa-fw fa-th"></i>分类</a>
+
+  </li>
+        <li class="menu-item menu-item-tags">
+
+    <a href="/tags/" rel="section"><i class="fa fa-fw fa-tags"></i>标签</a>
+
+  </li>
+        <li class="menu-item menu-item-archives">
+
+    <a href="/archives/" rel="section"><i class="fa fa-fw fa-archive"></i>归档</a>
+
+  </li>
+      <li class="menu-item menu-item-search">
+        <a role="button" class="popup-trigger"><i class="fa fa-search fa-fw"></i>搜索
+        </a>
+      </li>
+  </ul>
+</nav>
+
+
+
+  <div class="search-pop-overlay">
+    <div class="popup search-popup">
+        <div class="search-header">
+  <span class="search-icon">
+    <i class="fa fa-search"></i>
+  </span>
+  <div class="search-input-container">
+    <input autocomplete="off" autocapitalize="off"
+           placeholder="搜索..." spellcheck="false"
+           type="search" class="search-input">
+  </div>
+  <span class="popup-btn-close">
+    <i class="fa fa-times-circle"></i>
+  </span>
+</div>
+<div id="search-result">
+  <div id="no-result">
+    <i class="fa fa-spinner fa-pulse fa-5x fa-fw"></i>
+  </div>
+</div>
+
+    </div>
+  </div>
+
+</div>
+    </header>
+
+    
+  <div class="back-to-top">
+    <i class="fa fa-arrow-up"></i>
+    <span>0%</span>
+  </div>
+
+
+    <main class="main">
+      <div class="main-inner">
+        <div class="content-wrap">
+          
+
+          <div class="content post posts-expand">
+            
+
+    
+  
+  
+  <article itemscope itemtype="http://schema.org/Article" class="post-block" lang="zh-CN">
+    <link itemprop="mainEntityOfPage" href="http://example.com/2021/11/06/%E4%BD%BF%E7%94%A8-golang-%E5%AE%9E%E7%8E%B0%E8%A7%A3%E6%9E%90-cURL/">
+
+    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
+      <meta itemprop="image" content="/images/avatar.jpg">
+      <meta itemprop="name" content="predicate">
+      <meta itemprop="description" content="因为热爱，所以坚持。">
+    </span>
+
+    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
+      <meta itemprop="name" content="predicate | blog">
+    </span>
+      <header class="post-header">
+        <h1 class="post-title" itemprop="name headline">
+          使用 golang 实现解析 cURL
+        </h1>
+
+        <div class="post-meta">
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="fa fa-calendar-o"></i>
+              </span>
+              <span class="post-meta-item-text">发表于</span>
+
+              <time title="创建时间：2021-11-06 16:51:00" itemprop="dateCreated datePublished" datetime="2021-11-06T16:51:00+08:00">2021-11-06</time>
+            </span>
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="fa fa-folder-o"></i>
+              </span>
+              <span class="post-meta-item-text">分类于</span>
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
+                  <a href="/categories/golang/" itemprop="url" rel="index"><span itemprop="name">golang</span></a>
+                </span>
+            </span>
+
+          
+
+        </div>
+      </header>
+
+    
+    
+    
+    <div class="post-body" itemprop="articleBody">
+
+      
+        <blockquote>
+<p>本文对应源码：<a target="_blank" rel="noopener" href="https://github.com/killlowkey/parse-curl">https://github.com/killlowkey/parse-curl</a></p>
+</blockquote>
+<h1 id="cURL-是什么"><a href="#cURL-是什么" class="headerlink" title="cURL 是什么"></a>cURL 是什么</h1><p>维基百科：“cURL是一个命令行工具，用于使用URL语法获取或发送数据”，简而言之，可以使用 cURL 发送 http/https 请求。</p>
+<a id="more"></a>
+
+
+<h1 id="使用-cURL"><a href="#使用-cURL" class="headerlink" title="使用 cURL"></a>使用 cURL</h1><p>在进行实现之前，我们需要对 cURL 语法有一个大致的了解，当然有使用 cURL 的读者可以跳过该部分。下面来看一个简单的 cURL 例子，该命令向 <a target="_blank" rel="noopener" href="https://www.baidu.com/">https://www.baidu.com</a> 发送一个 GET 请求，获取该响应数据。</p>
+<figure class="highlight shell"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">curl https://www.baidu.com</span><br></pre></td></tr></table></figure>
+<p>cURL 还提供一系列的参数，比如通过 -X、–request 参数来指定请求方法，-H 参数指定请求头，-d 参数指定请求参数，–data-row 指定 body 等等。之后我们得到一个复杂的 cURL 例子，如下所示，该命令携带一个json数据向 <a target="_blank" rel="noopener" href="http://localhost:6000/log">http://localhost:6000/log</a>  发送一个 POST 请求。</p>
+<figure class="highlight shell"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br></pre></td><td class="code"><pre><span class="line">curl --location --request POST &#x27;http://localhost:6000/log&#x27; \</span><br><span class="line">--header &#x27;Content-Type: application/json&#x27; \</span><br><span class="line">--data-raw &#x27;&#123;</span><br><span class="line">    &quot;serviceName&quot;: &quot;Gateway-Service&quot;,</span><br><span class="line">    &quot;content&quot;: &quot;test&quot;</span><br><span class="line">&#125;&#x27;</span><br></pre></td></tr></table></figure>
+
+<h1 id="小试牛刀"><a href="#小试牛刀" class="headerlink" title="小试牛刀"></a>小试牛刀</h1><p>现在进入正题，有了前面的知识铺垫，相信会事半功倍。编写代码之前，先来讲述一下实现思路，cURL 是一个类似与 key/value 格式数据，也就是说通过 -H 指定请求头参数，后面跟着请求头数据，所以这里采用状态机方式实现会更好。</p>
+<p>一个完整的请求由请求行、请求头和body进行组成，下面我们定义了一个 Request struct 来表示请求，解析之后通过该 struct 进行表示。</p>
+<figure class="highlight go"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">type</span> Header <span class="keyword">map</span>[<span class="keyword">string</span>]<span class="keyword">string</span></span><br><span class="line"></span><br><span class="line"><span class="keyword">type</span> Request <span class="keyword">struct</span> &#123;</span><br><span class="line">	Method <span class="keyword">string</span> <span class="string">`json:&quot;method&quot;`</span></span><br><span class="line">	Url    <span class="keyword">string</span> <span class="string">`json:&quot;url&quot;`</span></span><br><span class="line">	Header Header <span class="string">`json:&quot;header&quot;`</span></span><br><span class="line">	Body   <span class="keyword">string</span> <span class="string">`json:&quot;body&quot;`</span></span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>解析之前需要对传入的 curl 参数进行一个判断，如果该参数不是一个 curl 命令，那么无需继续解析了。判断方法也很简单，如果该参数是 <code>curl </code> 开头（注意 curl 后还有个空格），那么基本可以认定该参数是一个 curl 命令。</p>
+<figure class="highlight go"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">if</span> strings.Index(curl, <span class="string">&quot;curl &quot;</span>) != <span class="number">0</span> &#123;</span><br><span class="line">    <span class="keyword">return</span> <span class="literal">nil</span>, <span class="literal">false</span></span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>因为 curl 是一个 shell 命令，接下来使用 go-shellwords 库对 curl 参数进行解析，得到一个 string 数组。</p>
+<figure class="highlight golang"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br></pre></td><td class="code"><pre><span class="line">args, err := shellwords.Parse(curl)</span><br><span class="line"><span class="keyword">if</span> err != <span class="literal">nil</span> &#123;</span><br><span class="line">    <span class="keyword">return</span> <span class="literal">nil</span>, <span class="literal">false</span></span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>之后调用 rewrite 方法对 args 数组进行二次清洗，该步骤的目的是为了去除数组中的<code>\n</code> 元素。因为 curl 还有一个特殊的参数，使用-X 参数来指定请求方法，比如说 -XPUT，该参数指定了一个 PUT 请求，所以这里需要将 -XPUT 这种参数进行拆分，得到 -X 与 PUT 两个参数。</p>
+<figure class="highlight go"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">func</span> <span class="title">Parse</span><span class="params">(curl <span class="keyword">string</span>)</span> <span class="params">(*Request, <span class="keyword">bool</span>)</span></span> &#123; </span><br><span class="line">    ....</span><br><span class="line">    args = rewrite(args)</span><br><span class="line">	request := &amp;Request&#123;Method: <span class="string">&quot;GET&quot;</span>, Header: Header&#123;&#125;&#125;</span><br><span class="line">	state := <span class="string">&quot;&quot;</span></span><br><span class="line">    ....</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="function"><span class="keyword">func</span> <span class="title">rewrite</span><span class="params">(args []<span class="keyword">string</span>)</span> []<span class="title">string</span></span> &#123;</span><br><span class="line">	res := <span class="built_in">make</span>([]<span class="keyword">string</span>, <span class="number">0</span>)</span><br><span class="line"></span><br><span class="line">	<span class="keyword">for</span> _, arg := <span class="keyword">range</span> args &#123;</span><br><span class="line">		arg = strings.TrimSpace(arg)</span><br><span class="line"></span><br><span class="line">		<span class="keyword">if</span> arg == <span class="string">&quot;\n&quot;</span> &#123;</span><br><span class="line">			<span class="keyword">continue</span></span><br><span class="line">		&#125;</span><br><span class="line"></span><br><span class="line">		<span class="keyword">if</span> strings.Contains(arg, <span class="string">&quot;\n&quot;</span>) &#123;</span><br><span class="line">			arg = strings.ReplaceAll(arg, <span class="string">&quot;\n&quot;</span>, <span class="string">&quot;&quot;</span>)</span><br><span class="line">		&#125;</span><br><span class="line"></span><br><span class="line">		<span class="comment">// split request method</span></span><br><span class="line">		<span class="keyword">if</span> strings.Index(arg, <span class="string">&quot;-X&quot;</span>) == <span class="number">0</span> &#123;</span><br><span class="line">			res = <span class="built_in">append</span>(res, arg[<span class="number">0</span>:<span class="number">2</span>])</span><br><span class="line">			res = <span class="built_in">append</span>(res, arg[<span class="number">2</span>:])</span><br><span class="line">		&#125; <span class="keyword">else</span> &#123;</span><br><span class="line">			res = <span class="built_in">append</span>(res, arg)</span><br><span class="line">		&#125;</span><br><span class="line">	&#125;</span><br><span class="line"></span><br><span class="line">	<span class="keyword">return</span> res</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+
+<h1 id="实现状态机"><a href="#实现状态机" class="headerlink" title="实现状态机"></a>实现状态机</h1><p>状态机是实现解析 cURL 核心部分，前面我们对 cURL 参数进行分割与清洗。</p>
+<p>实现状态机之前我们需要对 cURL 一些参数进行了解，比如说通过 -A 与 –user–agent 参数可以指定 user-agent。此时就可以给状态机赋值为 user-agent 然后就跳出该  switch，等到遍历到下一个参数的时候，就进入 switch 中的最后一个 case，在该case 里面，会对状态机的状态进行检测，提取出相应的值，最后清除状态的状态。</p>
+<p>解析 -H 与 –header 参数时，需要进行拆分操作。比如说 <code>-H &#39;Accept-Encoding: gzip, deflate, sdch&#39;</code>，此时就需要获取请求头与值得到 <code>Accept-Encoding</code> 与  <code>gzip, deflate, sdch</code>，最后添加到 request struct 的 header 中。请求的类型为 application/x-www-form-urlencoded 时，需要使用 &amp; 对请求参数进行拼接，倘若是 application/json，那么直接赋值即可。解析 -u 与 –user 参数时，需要对 arg 参数进行一个 base64 编码操作，然后向请求添加一个 Authorization 头。</p>
+<figure class="highlight go"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br><span class="line">49</span><br><span class="line">50</span><br><span class="line">51</span><br><span class="line">52</span><br><span class="line">53</span><br><span class="line">54</span><br><span class="line">55</span><br><span class="line">56</span><br><span class="line">57</span><br><span class="line">58</span><br><span class="line">59</span><br><span class="line">60</span><br><span class="line">61</span><br><span class="line">62</span><br><span class="line">63</span><br><span class="line">64</span><br><span class="line">65</span><br><span class="line">66</span><br><span class="line">67</span><br><span class="line">68</span><br><span class="line">69</span><br><span class="line">70</span><br><span class="line">71</span><br><span class="line">72</span><br><span class="line">73</span><br><span class="line">74</span><br><span class="line">75</span><br><span class="line">76</span><br><span class="line">77</span><br><span class="line">78</span><br><span class="line">79</span><br><span class="line">80</span><br><span class="line">81</span><br><span class="line">82</span><br><span class="line">83</span><br><span class="line">84</span><br><span class="line">85</span><br><span class="line">86</span><br><span class="line">87</span><br><span class="line">88</span><br><span class="line">89</span><br><span class="line">90</span><br><span class="line">91</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">func</span> <span class="title">Parse</span><span class="params">(curl <span class="keyword">string</span>)</span> <span class="params">(*Request, <span class="keyword">bool</span>)</span></span> &#123;  </span><br><span class="line">	....</span><br><span class="line">    	<span class="keyword">for</span> _, arg := <span class="keyword">range</span> args &#123;</span><br><span class="line">		<span class="keyword">switch</span> <span class="literal">true</span> &#123;</span><br><span class="line">		<span class="keyword">case</span> isUrl(arg):</span><br><span class="line">			request.Url = arg</span><br><span class="line">			<span class="keyword">break</span></span><br><span class="line"></span><br><span class="line">		<span class="keyword">case</span> arg == <span class="string">&quot;-A&quot;</span> || arg == <span class="string">&quot;--user-agent&quot;</span>:</span><br><span class="line">			state = <span class="string">&quot;user-agent&quot;</span></span><br><span class="line">			<span class="keyword">break</span></span><br><span class="line"></span><br><span class="line">		<span class="keyword">case</span> arg == <span class="string">&quot;-H&quot;</span> || arg == <span class="string">&quot;--header&quot;</span>:</span><br><span class="line">			state = <span class="string">&quot;header&quot;</span></span><br><span class="line">			<span class="keyword">break</span></span><br><span class="line"></span><br><span class="line">		<span class="keyword">case</span> arg == <span class="string">&quot;-d&quot;</span> || arg == <span class="string">&quot;--data&quot;</span> || arg == <span class="string">&quot;--data-ascii&quot;</span> || arg == <span class="string">&quot;--data-raw&quot;</span>:</span><br><span class="line">			state = <span class="string">&quot;data&quot;</span></span><br><span class="line">			<span class="keyword">break</span></span><br><span class="line"></span><br><span class="line">		<span class="keyword">case</span> arg == <span class="string">&quot;-u&quot;</span> || arg == <span class="string">&quot;--user&quot;</span>:</span><br><span class="line">			state = <span class="string">&quot;user&quot;</span></span><br><span class="line">			<span class="keyword">break</span></span><br><span class="line"></span><br><span class="line">		<span class="keyword">case</span> arg == <span class="string">&quot;-I&quot;</span> || arg == <span class="string">&quot;--head&quot;</span>:</span><br><span class="line">			request.Method = <span class="string">&quot;HEAD&quot;</span></span><br><span class="line">			<span class="keyword">break</span></span><br><span class="line"></span><br><span class="line">		<span class="keyword">case</span> arg == <span class="string">&quot;-X&quot;</span> || arg == <span class="string">&quot;--request&quot;</span>:</span><br><span class="line">			state = <span class="string">&quot;method&quot;</span></span><br><span class="line">			<span class="keyword">break</span></span><br><span class="line"></span><br><span class="line">		<span class="keyword">case</span> arg == <span class="string">&quot;-b&quot;</span> || arg == <span class="string">&quot;--cookie&quot;</span>:</span><br><span class="line">			state = <span class="string">&quot;cookie&quot;</span></span><br><span class="line">			<span class="keyword">break</span></span><br><span class="line"></span><br><span class="line">		<span class="keyword">case</span> <span class="built_in">len</span>(arg) &gt; <span class="number">0</span>:</span><br><span class="line">			<span class="keyword">switch</span> state &#123;</span><br><span class="line">			<span class="keyword">case</span> <span class="string">&quot;header&quot;</span>:</span><br><span class="line">				fields := parseField(arg)</span><br><span class="line">				request.Header[fields[<span class="number">0</span>]] = strings.TrimSpace(fields[<span class="number">1</span>])</span><br><span class="line">				state = <span class="string">&quot;&quot;</span></span><br><span class="line">				<span class="keyword">break</span></span><br><span class="line"></span><br><span class="line">			<span class="keyword">case</span> <span class="string">&quot;user-agent&quot;</span>:</span><br><span class="line">				request.Header[<span class="string">&quot;User-Agent&quot;</span>] = arg</span><br><span class="line">				state = <span class="string">&quot;&quot;</span></span><br><span class="line">				<span class="keyword">break</span></span><br><span class="line"></span><br><span class="line">			<span class="keyword">case</span> <span class="string">&quot;data&quot;</span>:</span><br><span class="line">				<span class="keyword">if</span> request.Method == <span class="string">&quot;GET&quot;</span> || request.Method == <span class="string">&quot;HEAD&quot;</span> &#123;</span><br><span class="line">					request.Method = <span class="string">&quot;POST&quot;</span></span><br><span class="line">				&#125;</span><br><span class="line"></span><br><span class="line">				<span class="keyword">if</span> !hasContentType(*request) &#123;</span><br><span class="line">					request.Header[<span class="string">&quot;Content-Type&quot;</span>] = <span class="string">&quot;application/x-www-form-urlencoded&quot;</span></span><br><span class="line">				&#125;</span><br><span class="line"></span><br><span class="line">				<span class="keyword">if</span> <span class="built_in">len</span>(request.Body) == <span class="number">0</span> &#123;</span><br><span class="line">					request.Body = arg</span><br><span class="line">				&#125; <span class="keyword">else</span> &#123;</span><br><span class="line">					request.Body = request.Body + <span class="string">&quot;&amp;&quot;</span> + arg</span><br><span class="line">				&#125;</span><br><span class="line"></span><br><span class="line">				state = <span class="string">&quot;&quot;</span></span><br><span class="line">				<span class="keyword">break</span></span><br><span class="line"></span><br><span class="line">			<span class="keyword">case</span> <span class="string">&quot;user&quot;</span>:</span><br><span class="line">				request.Header[<span class="string">&quot;Authorization&quot;</span>] = <span class="string">&quot;Basic &quot;</span> +</span><br><span class="line">					base64.StdEncoding.EncodeToString([]<span class="keyword">byte</span>(arg))</span><br><span class="line">				state = <span class="string">&quot;&quot;</span></span><br><span class="line">				<span class="keyword">break</span></span><br><span class="line"></span><br><span class="line">			<span class="keyword">case</span> <span class="string">&quot;method&quot;</span>:</span><br><span class="line">				request.Method = arg</span><br><span class="line">				state = <span class="string">&quot;&quot;</span></span><br><span class="line">				<span class="keyword">break</span></span><br><span class="line"></span><br><span class="line">			<span class="keyword">case</span> <span class="string">&quot;cookie&quot;</span>:</span><br><span class="line">				request.Header[<span class="string">&quot;Cookie&quot;</span>] = arg</span><br><span class="line">				state = <span class="string">&quot;&quot;</span></span><br><span class="line">				<span class="keyword">break</span></span><br><span class="line"></span><br><span class="line">			<span class="keyword">default</span>:</span><br><span class="line">				<span class="keyword">break</span></span><br><span class="line">			&#125;</span><br><span class="line">		&#125;</span><br><span class="line"></span><br><span class="line">	&#125;</span><br><span class="line">    ....</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+
+<h1 id="略有小成"><a href="#略有小成" class="headerlink" title="略有小成"></a>略有小成</h1><p>创建一个 example，使用 Parse 方法传入一个 curl 命令，得到一个 json 对象。</p>
+<figure class="highlight go"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">package</span> main</span><br><span class="line"></span><br><span class="line"><span class="keyword">import</span> (</span><br><span class="line">	<span class="string">&quot;fmt&quot;</span></span><br><span class="line">	parseCurl <span class="string">&quot;parse-curl&quot;</span></span><br><span class="line">)</span><br><span class="line"></span><br><span class="line"><span class="function"><span class="keyword">func</span> <span class="title">main</span><span class="params">()</span></span> &#123;</span><br><span class="line">	request, _ := parseCurl.Parse(<span class="string">&quot;curl &#x27;http://google.com/&#x27; \\\n  -H &#x27;Accept-Encoding: gzip, deflate, sdch&#x27; \\\n  -H &#x27;Accept-Language: en-US,en;q=0.8,da;q=0.6&#x27; \\\n  -H &#x27;Upgrade-Insecure-Requests: 1&#x27; \\\n  -H &#x27;User-Agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 10_11_4) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/49.0.2623.110 Safari/537.36&#x27; \\\n  -H &#x27;Accept: text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8&#x27; \\\n  -H &#x27;Connection: keep-alive&#x27; \\\n  --compressed\n&quot;</span>)</span><br><span class="line">	fmt.Println(request.ToJson(<span class="literal">true</span>))</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<figure class="highlight json"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br></pre></td><td class="code"><pre><span class="line">&#123;</span><br><span class="line">  <span class="attr">&quot;method&quot;</span>: <span class="string">&quot;GET&quot;</span>,</span><br><span class="line">  <span class="attr">&quot;url&quot;</span>: <span class="string">&quot;http://google.com/&quot;</span>,</span><br><span class="line">  <span class="attr">&quot;header&quot;</span>: &#123;</span><br><span class="line">    <span class="attr">&quot;Accept&quot;</span>: <span class="string">&quot;text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8&quot;</span>,</span><br><span class="line">    <span class="attr">&quot;Accept-Encoding&quot;</span>: <span class="string">&quot;gzip, deflate, sdch&quot;</span>,</span><br><span class="line">    <span class="attr">&quot;Accept-Language&quot;</span>: <span class="string">&quot;en-US,en;q=0.8,da;q=0.6&quot;</span>,</span><br><span class="line">    <span class="attr">&quot;Connection&quot;</span>: <span class="string">&quot;keep-alive&quot;</span>,</span><br><span class="line">    <span class="attr">&quot;Upgrade-Insecure-Requests&quot;</span>: <span class="string">&quot;1&quot;</span>,</span><br><span class="line">    <span class="attr">&quot;User-Agent&quot;</span>: <span class="string">&quot;Mozilla/5.0 (Macintosh; Intel Mac OS X 10_11_4) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/49.0.2623.110 Safari/537.36&quot;</span></span><br><span class="line">  &#125;,</span><br><span class="line">  <span class="attr">&quot;body&quot;</span>: <span class="string">&quot;&quot;</span></span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+
+
+
+<h1 id="参考"><a href="#参考" class="headerlink" title="参考"></a>参考</h1><ul>
+<li><a target="_blank" rel="noopener" href="https://en.wikipedia.org/wiki/CURL">https://en.wikipedia.org/wiki/CURL</a></li>
+<li><a target="_blank" rel="noopener" href="https://github.com/tj/parse-curl.js">https://github.com/tj/parse-curl.js</a></li>
+</ul>
+
+    </div>
+
+    
+    
+    
+
+      <footer class="post-footer">
+          <div class="post-tags">
+              <a href="/tags/golang/" <i class="fa fa-tag"></i>golang</a>
+              <a href="/tags/cURL/" <i class="fa fa-tag"></i>cURL</a>
+          </div>
+
+        
+
+
+        
+    <div class="post-nav">
+      <div class="post-nav-item">
+    <a href="/2021/08/03/%E5%9F%BA%E4%BA%8E-Java-NIO-%E5%AE%9E%E7%8E%B0-WebSocket-%E5%8D%8F%E8%AE%AE/" rel="prev" title="基于 Java  NIO 实现 WebSocket 协议">
+      <i class="fa fa-chevron-left"></i> 基于 Java  NIO 实现 WebSocket 协议
+    </a></div>
+      <div class="post-nav-item">
+    <a href="/2022/01/25/%E5%A6%82%E4%BD%95%E5%AE%9E%E7%8E%B0%E6%97%A5%E5%BF%97%E6%A1%86%E6%9E%B6/" rel="next" title="如何实现日志框架">
+      如何实现日志框架 <i class="fa fa-chevron-right"></i>
+    </a></div>
+    </div>
+      </footer>
+    
+  </article>
+  
+  
+  
+
+
+
+          </div>
+          
+
+<script>
+  window.addEventListener('tabs:register', () => {
+    let { activeClass } = CONFIG.comments;
+    if (CONFIG.comments.storage) {
+      activeClass = localStorage.getItem('comments_active') || activeClass;
+    }
+    if (activeClass) {
+      let activeTab = document.querySelector(`a[href="#comment-${activeClass}"]`);
+      if (activeTab) {
+        activeTab.click();
+      }
+    }
+  });
+  if (CONFIG.comments.storage) {
+    window.addEventListener('tabs:click', event => {
+      if (!event.target.matches('.tabs-comment .tab-content .tab-pane')) return;
+      let commentClass = event.target.classList[1];
+      localStorage.setItem('comments_active', commentClass);
+    });
+  }
+</script>
+
+        </div>
+          
+  
+  <div class="toggle sidebar-toggle">
+    <span class="toggle-line toggle-line-first"></span>
+    <span class="toggle-line toggle-line-middle"></span>
+    <span class="toggle-line toggle-line-last"></span>
+  </div>
+
+  <aside class="sidebar">
+    <div class="sidebar-inner">
+
+      <ul class="sidebar-nav motion-element">
+        <li class="sidebar-nav-toc">
+          文章目录
+        </li>
+        <li class="sidebar-nav-overview">
+          站点概览
+        </li>
+      </ul>
+
+      <!--noindex-->
+      <div class="post-toc-wrap sidebar-panel">
+          <div class="post-toc motion-element"><ol class="nav"><li class="nav-item nav-level-1"><a class="nav-link" href="#cURL-%E6%98%AF%E4%BB%80%E4%B9%88"><span class="nav-number">1.</span> <span class="nav-text">cURL 是什么</span></a></li><li class="nav-item nav-level-1"><a class="nav-link" href="#%E4%BD%BF%E7%94%A8-cURL"><span class="nav-number">2.</span> <span class="nav-text">使用 cURL</span></a></li><li class="nav-item nav-level-1"><a class="nav-link" href="#%E5%B0%8F%E8%AF%95%E7%89%9B%E5%88%80"><span class="nav-number">3.</span> <span class="nav-text">小试牛刀</span></a></li><li class="nav-item nav-level-1"><a class="nav-link" href="#%E5%AE%9E%E7%8E%B0%E7%8A%B6%E6%80%81%E6%9C%BA"><span class="nav-number">4.</span> <span class="nav-text">实现状态机</span></a></li><li class="nav-item nav-level-1"><a class="nav-link" href="#%E7%95%A5%E6%9C%89%E5%B0%8F%E6%88%90"><span class="nav-number">5.</span> <span class="nav-text">略有小成</span></a></li><li class="nav-item nav-level-1"><a class="nav-link" href="#%E5%8F%82%E8%80%83"><span class="nav-number">6.</span> <span class="nav-text">参考</span></a></li></ol></div>
+      </div>
+      <!--/noindex-->
+
+      <div class="site-overview-wrap sidebar-panel">
+        <div class="site-author motion-element" itemprop="author" itemscope itemtype="http://schema.org/Person">
+    <img class="site-author-image" itemprop="image" alt="predicate"
+      src="/images/avatar.jpg">
+  <p class="site-author-name" itemprop="name">predicate</p>
+  <div class="site-description" itemprop="description">因为热爱，所以坚持。</div>
+</div>
+<div class="site-state-wrap motion-element">
+  <nav class="site-state">
+      <div class="site-state-item site-state-posts">
+          <a href="/archives/">
+        
+          <span class="site-state-item-count">21</span>
+          <span class="site-state-item-name">日志</span>
+        </a>
+      </div>
+      <div class="site-state-item site-state-categories">
+            <a href="/categories/">
+          
+        <span class="site-state-item-count">13</span>
+        <span class="site-state-item-name">分类</span></a>
+      </div>
+      <div class="site-state-item site-state-tags">
+            <a href="/tags/">
+          
+        <span class="site-state-item-count">27</span>
+        <span class="site-state-item-name">标签</span></a>
+      </div>
+  </nav>
+</div>
+  <div class="links-of-author motion-element">
+      <span class="links-of-author-item">
+        <a href="https://github.com/killlowkey" title="GitHub → https:&#x2F;&#x2F;github.com&#x2F;killlowkey" rel="noopener" target="_blank"><i class="fa fa-fw fa-github"></i>GitHub</a>
+      </span>
+  </div>
+
+
+
+      </div>
+
+    </div>
+  </aside>
+  <div id="sidebar-dimmer"></div>
+
+
+      </div>
+    </main>
+
+    <footer class="footer">
+      <div class="footer-inner">
+        
+
+        
+
+<div class="copyright">
+  
+  &copy; 
+  <span itemprop="copyrightYear">2022</span>
+  <span class="with-love">
+    <i class="fa fa-user"></i>
+  </span>
+  <span class="author" itemprop="copyrightHolder">predicate</span>
+</div>
+  <div class="powered-by">由 <a href="https://hexo.io/" class="theme-link" rel="noopener" target="_blank">Hexo</a> & <a href="https://theme-next.org/" class="theme-link" rel="noopener" target="_blank">NexT.Gemini</a> 强力驱动
+  </div>
+
+        
+
+
+
+
+
+
+
+
+      </div>
+    </footer>
+  </div>
+
+  
+  <script src="/lib/anime.min.js"></script>
+  <script src="/lib/velocity/velocity.min.js"></script>
+  <script src="/lib/velocity/velocity.ui.min.js"></script>
+
+<script src="/js/utils.js"></script>
+
+<script src="/js/motion.js"></script>
+
+
+<script src="/js/schemes/pisces.js"></script>
+
+
+<script src="/js/next-boot.js"></script>
+
+
+
+
+  
+
+
+
+
+  
+<script src="/js/local-search.js"></script>
+
+
+
+
+
+
+
+
+
+
+
+
+
+  
+
+  
+
+</body>
+</html>

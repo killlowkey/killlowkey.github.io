@@ -1,0 +1,509 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=2">
+<meta name="theme-color" content="#222">
+<meta name="generator" content="Hexo 5.3.0">
+  <link rel="apple-touch-icon" sizes="180x180" href="/images/apple-touch-icon-next.png">
+  <link rel="icon" type="image/png" sizes="32x32" href="/images/favicon-32x32-next.png">
+  <link rel="icon" type="image/png" sizes="16x16" href="/images/favicon-16x16-next.png">
+  <link rel="mask-icon" href="/images/logo.svg" color="#222">
+
+<link rel="stylesheet" href="/css/main.css">
+
+
+<link rel="stylesheet" href="/lib/font-awesome/css/font-awesome.min.css">
+
+<script id="hexo-configurations">
+    var NexT = window.NexT || {};
+    var CONFIG = {"hostname":"example.com","root":"/","scheme":"Gemini","version":"7.8.0","exturl":false,"sidebar":{"position":"left","display":"post","padding":18,"offset":12,"onmobile":false},"copycode":{"enable":false,"show_result":false,"style":null},"back2top":{"enable":true,"sidebar":false,"scrollpercent":false},"bookmark":{"enable":false,"color":"#222","save":"auto"},"fancybox":false,"mediumzoom":false,"lazyload":false,"pangu":false,"comments":{"style":"tabs","active":null,"storage":true,"lazyload":false,"nav":null},"algolia":{"hits":{"per_page":10},"labels":{"input_placeholder":"Search for Posts","hits_empty":"We didn't find any results for the search: ${query}","hits_stats":"${hits} results found in ${time} ms"}},"localsearch":{"enable":true,"trigger":"auto","top_n_per_article":1,"unescape":false,"preload":false},"motion":{"enable":true,"async":false,"transition":{"post_block":"fadeIn","post_header":"slideDownIn","post_body":"slideDownIn","coll_header":"slideLeftIn","sidebar":"slideUpIn"}},"path":"search.xml"};
+  </script>
+
+  <meta name="description" content="ja-netfilter 是一款 JavaAgent 框架，而 JavaAgent 是由 Java 提供一种动态代理机制，可以在 runtime 时修改 Class 字节码，从而实现代码注入操作。 ja-netfilter 对底层操作进行封装，提供插件系统（Plugin System）机制来向外部暴露简易的接口，使得注入操作更加的简单。">
+<meta property="og:type" content="article">
+<meta property="og:title" content="ja-netfilter 设计与实现">
+<meta property="og:url" content="http://example.com/2022/01/29/ja-netfilter-%E8%AE%BE%E8%AE%A1%E4%B8%8E%E5%AE%9E%E7%8E%B0/index.html">
+<meta property="og:site_name" content="predicate | blog">
+<meta property="og:description" content="ja-netfilter 是一款 JavaAgent 框架，而 JavaAgent 是由 Java 提供一种动态代理机制，可以在 runtime 时修改 Class 字节码，从而实现代码注入操作。 ja-netfilter 对底层操作进行封装，提供插件系统（Plugin System）机制来向外部暴露简易的接口，使得注入操作更加的简单。">
+<meta property="og:locale" content="zh_CN">
+<meta property="og:image" content="https://gitee.com/killkey/images-upload/raw/master/typora/2022-01/Snipaste_2022-01-29_10-50-29.png">
+<meta property="article:published_time" content="2022-01-29T04:53:00.000Z">
+<meta property="article:modified_time" content="2022-03-24T04:57:14.180Z">
+<meta property="article:author" content="predicate">
+<meta property="article:tag" content="ja-netfilter">
+<meta property="article:tag" content="design">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:image" content="https://gitee.com/killkey/images-upload/raw/master/typora/2022-01/Snipaste_2022-01-29_10-50-29.png">
+
+<link rel="canonical" href="http://example.com/2022/01/29/ja-netfilter-%E8%AE%BE%E8%AE%A1%E4%B8%8E%E5%AE%9E%E7%8E%B0/">
+
+
+<script id="page-configurations">
+  // https://hexo.io/docs/variables.html
+  CONFIG.page = {
+    sidebar: "",
+    isHome : false,
+    isPost : true,
+    lang   : 'zh-CN'
+  };
+</script>
+
+  <title>ja-netfilter 设计与实现 | predicate | blog</title>
+  
+
+
+
+
+
+
+  <noscript>
+  <style>
+  .use-motion .brand,
+  .use-motion .menu-item,
+  .sidebar-inner,
+  .use-motion .post-block,
+  .use-motion .pagination,
+  .use-motion .comments,
+  .use-motion .post-header,
+  .use-motion .post-body,
+  .use-motion .collection-header { opacity: initial; }
+
+  .use-motion .site-title,
+  .use-motion .site-subtitle {
+    opacity: initial;
+    top: initial;
+  }
+
+  .use-motion .logo-line-before i { left: initial; }
+  .use-motion .logo-line-after i { right: initial; }
+  </style>
+</noscript>
+
+</head>
+
+<body itemscope itemtype="http://schema.org/WebPage">
+  <div class="container use-motion">
+    <div class="headband"></div>
+
+    <header class="header" itemscope itemtype="http://schema.org/WPHeader">
+      <div class="header-inner"><div class="site-brand-container">
+  <div class="site-nav-toggle">
+    <div class="toggle" aria-label="切换导航栏">
+      <span class="toggle-line toggle-line-first"></span>
+      <span class="toggle-line toggle-line-middle"></span>
+      <span class="toggle-line toggle-line-last"></span>
+    </div>
+  </div>
+
+  <div class="site-meta">
+
+    <a href="/" class="brand" rel="start">
+      <span class="logo-line-before"><i></i></span>
+      <h1 class="site-title">predicate | blog</h1>
+      <span class="logo-line-after"><i></i></span>
+    </a>
+      <p class="site-subtitle" itemprop="description">你好，世界！</p>
+  </div>
+
+  <div class="site-nav-right">
+    <div class="toggle popup-trigger">
+        <i class="fa fa-search fa-fw fa-lg"></i>
+    </div>
+  </div>
+</div>
+
+
+
+
+<nav class="site-nav">
+  <ul id="menu" class="menu">
+        <li class="menu-item menu-item-home">
+
+    <a href="/" rel="section"><i class="fa fa-fw fa-home"></i>首页</a>
+
+  </li>
+        <li class="menu-item menu-item-categories">
+
+    <a href="/categories/" rel="section"><i class="fa fa-fw fa-th"></i>分类</a>
+
+  </li>
+        <li class="menu-item menu-item-tags">
+
+    <a href="/tags/" rel="section"><i class="fa fa-fw fa-tags"></i>标签</a>
+
+  </li>
+        <li class="menu-item menu-item-archives">
+
+    <a href="/archives/" rel="section"><i class="fa fa-fw fa-archive"></i>归档</a>
+
+  </li>
+      <li class="menu-item menu-item-search">
+        <a role="button" class="popup-trigger"><i class="fa fa-search fa-fw"></i>搜索
+        </a>
+      </li>
+  </ul>
+</nav>
+
+
+
+  <div class="search-pop-overlay">
+    <div class="popup search-popup">
+        <div class="search-header">
+  <span class="search-icon">
+    <i class="fa fa-search"></i>
+  </span>
+  <div class="search-input-container">
+    <input autocomplete="off" autocapitalize="off"
+           placeholder="搜索..." spellcheck="false"
+           type="search" class="search-input">
+  </div>
+  <span class="popup-btn-close">
+    <i class="fa fa-times-circle"></i>
+  </span>
+</div>
+<div id="search-result">
+  <div id="no-result">
+    <i class="fa fa-spinner fa-pulse fa-5x fa-fw"></i>
+  </div>
+</div>
+
+    </div>
+  </div>
+
+</div>
+    </header>
+
+    
+  <div class="back-to-top">
+    <i class="fa fa-arrow-up"></i>
+    <span>0%</span>
+  </div>
+
+
+    <main class="main">
+      <div class="main-inner">
+        <div class="content-wrap">
+          
+
+          <div class="content post posts-expand">
+            
+
+    
+  
+  
+  <article itemscope itemtype="http://schema.org/Article" class="post-block" lang="zh-CN">
+    <link itemprop="mainEntityOfPage" href="http://example.com/2022/01/29/ja-netfilter-%E8%AE%BE%E8%AE%A1%E4%B8%8E%E5%AE%9E%E7%8E%B0/">
+
+    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
+      <meta itemprop="image" content="/images/avatar.jpg">
+      <meta itemprop="name" content="predicate">
+      <meta itemprop="description" content="因为热爱，所以坚持。">
+    </span>
+
+    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
+      <meta itemprop="name" content="predicate | blog">
+    </span>
+      <header class="post-header">
+        <h1 class="post-title" itemprop="name headline">
+          ja-netfilter 设计与实现
+        </h1>
+
+        <div class="post-meta">
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="fa fa-calendar-o"></i>
+              </span>
+              <span class="post-meta-item-text">发表于</span>
+
+              <time title="创建时间：2022-01-29 12:53:00" itemprop="dateCreated datePublished" datetime="2022-01-29T12:53:00+08:00">2022-01-29</time>
+            </span>
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="fa fa-folder-o"></i>
+              </span>
+              <span class="post-meta-item-text">分类于</span>
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
+                  <a href="/categories/ja-netfilter/" itemprop="url" rel="index"><span itemprop="name">ja-netfilter</span></a>
+                </span>
+            </span>
+
+          
+
+        </div>
+      </header>
+
+    
+    
+    
+    <div class="post-body" itemprop="articleBody">
+
+      
+        <p>ja-netfilter 是一款 JavaAgent 框架，而 JavaAgent 是由 Java 提供一种动态代理机制，可以在 runtime 时修改 Class 字节码，从而实现代码注入操作。</p>
+<p>ja-netfilter 对底层操作进行封装，提供插件系统（Plugin System）机制来向外部暴露简易的接口，使得注入操作更加的简单。</p>
+<a id="more"></a>
+
+<h2 id="example"><a href="#example" class="headerlink" title="example"></a>example</h2><p>从 <a target="_blank" rel="noopener" href="https://github.com/ja-netfilter/ja-netfilter/releases">releases page</a> 下载 ja-netfilter 最新的发布版本，解压该压缩包，其目录结构如下：</p>
+<ol>
+<li>plugins：插件 jar 目录</li>
+<li>config：插件配置目录</li>
+</ol>
+<blockquote>
+<p>配置名称需要与插件 jar 名称相同</p>
+</blockquote>
+<p><img src="https://gitee.com/killkey/images-upload/raw/master/typora/2022-01/Snipaste_2022-01-29_10-50-29.png" alt="Snipaste_2022-01-29_10-50-29"></p>
+<p>插件需要引入 ja-netfilter 作为依赖，然后实现其 PluginEntry 与 MyTransformer 接口，前者用于描述插件信息，后者则对字节码进行转换操作，换句话说，在这过程中可以对字节码进行注入。</p>
+<p> .java 文件编译成 class 字节码后，通过 java 命令来运行，而该命令提供了一个 -javaagent 参数，用于在 Runtime 时对字节码进行操作。启动 ja-netfilter 需要添加 -javaagent:/absolute/path/to/ja-netfilter.jar 在命令参数后，完整的命令应是这样 java -javaagent:/absolute/path/to/ja-netfilter.jar -jar executable_jar_file.jar。</p>
+<p>命令执行后，ja-netfilter 会随着虚拟机启动后进行调用，从 plugins 目录加载插件，根据插件的行为进行注入操作。</p>
+<h2 id="implement"><a href="#implement" class="headerlink" title="implement"></a>implement</h2><p>在 pom.xml 的 maven-assembly-plugin 配置中，会添加如下的配置来限定 javaagent 入口类，根据如下配置，当 javaagent 启动时，会调用其 Launcher 类的 agentmain 方法。</p>
+<blockquote>
+<p>JDK 文档指出，需在 manifest 文件指定 javaagent entry class，javaagent 会调用 entry class 的 agentmain 方法</p>
+<p>see more details：<a target="_blank" rel="noopener" href="https://docs.oracle.com/javase/7/docs/api/java/lang/instrument/package-summary.html">https://docs.oracle.com/javase/7/docs/api/java/lang/instrument/package-summary.html</a></p>
+</blockquote>
+<figure class="highlight xml"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br></pre></td><td class="code"><pre><span class="line"><span class="tag">&lt;<span class="name">manifestEntries</span>&gt;</span></span><br><span class="line">    <span class="tag">&lt;<span class="name">Built-By</span>&gt;</span>neo<span class="tag">&lt;/<span class="name">Built-By</span>&gt;</span></span><br><span class="line">    <span class="tag">&lt;<span class="name">Premain-Class</span>&gt;</span>com.janetfilter.core.Launcher<span class="tag">&lt;/<span class="name">Premain-Class</span>&gt;</span></span><br><span class="line">    <span class="tag">&lt;<span class="name">Agent-Class</span>&gt;</span>com.janetfilter.core.Launcher<span class="tag">&lt;/<span class="name">Agent-Class</span>&gt;</span></span><br><span class="line">    <span class="tag">&lt;<span class="name">Main-Class</span>&gt;</span>com.janetfilter.core.Launcher<span class="tag">&lt;/<span class="name">Main-Class</span>&gt;</span></span><br><span class="line">    <span class="tag">&lt;<span class="name">Can-Redefine-Classes</span>&gt;</span>true<span class="tag">&lt;/<span class="name">Can-Redefine-Classes</span>&gt;</span></span><br><span class="line">    <span class="tag">&lt;<span class="name">Can-Retransform-Classes</span>&gt;</span>true<span class="tag">&lt;/<span class="name">Can-Retransform-Classes</span>&gt;</span></span><br><span class="line">    <span class="tag">&lt;<span class="name">Can-Set-Native-Method-Prefix</span>&gt;</span>true<span class="tag">&lt;/<span class="name">Can-Set-Native-Method-Prefix</span>&gt;</span></span><br><span class="line"><span class="tag">&lt;/<span class="name">manifestEntries</span>&gt;</span></span><br></pre></td></tr></table></figure>
+<p>看到 agentmain  方法，倘若开启了 debug mode，设置 debug 参数之后，随后就调用内部的 premain 方法。</p>
+<figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">public</span> <span class="keyword">static</span> <span class="keyword">void</span> <span class="title">agentmain</span><span class="params">(String args, Instrumentation inst)</span> </span>&#123;</span><br><span class="line">    <span class="keyword">if</span> (<span class="keyword">null</span> == System.getProperty(<span class="string">&quot;janf.debug&quot;</span>)) &#123;</span><br><span class="line">        System.setProperty(<span class="string">&quot;janf.debug&quot;</span>, <span class="string">&quot;1&quot;</span>);</span><br><span class="line">    &#125;</span><br><span class="line"></span><br><span class="line">    premain(args, inst, <span class="keyword">true</span>);</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>premain 方法中，主要逻辑如下所示：</p>
+<ol>
+<li>判断是否多次加载 </li>
+<li>打印 usage</li>
+<li>获取到该 jar，用于 BootStrap Class Loader 进行搜索</li>
+<li>创建 Environment 实例，初始化配置环境</li>
+<li>调用 Initializer 的 init 方法进行后续初始化</li>
+</ol>
+<p>1-5 都是一些前置操作，我们关注点应放在 init 方法上。</p>
+<figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">private</span> <span class="keyword">static</span> <span class="keyword">void</span> <span class="title">premain</span><span class="params">(String args, Instrumentation inst, <span class="keyword">boolean</span> attachMode)</span> </span>&#123;</span><br><span class="line">    <span class="comment">// 判断是否加载多次</span></span><br><span class="line">    <span class="keyword">if</span> (loaded) &#123;</span><br><span class="line">        DebugInfo.warn(<span class="string">&quot;You have multiple `ja-netfilter` as javaagent.&quot;</span>);</span><br><span class="line">        <span class="keyword">return</span>;</span><br><span class="line">    &#125;</span><br><span class="line"></span><br><span class="line">    <span class="comment">// 打印 usage</span></span><br><span class="line">    printUsage();</span><br><span class="line"></span><br><span class="line">    URI jarURI;</span><br><span class="line">    <span class="keyword">try</span> &#123;</span><br><span class="line">        loaded = <span class="keyword">true</span>;</span><br><span class="line">        jarURI = WhereIsUtils.getJarURI();</span><br><span class="line">    &#125; <span class="keyword">catch</span> (Throwable e) &#123;</span><br><span class="line">        DebugInfo.error(<span class="string">&quot;Can not locate `ja-netfilter` jar file.&quot;</span>, e);</span><br><span class="line">        <span class="keyword">return</span>;</span><br><span class="line">    &#125;</span><br><span class="line"></span><br><span class="line">    <span class="comment">// 获取该 jar 所在的文件</span></span><br><span class="line">    File agentFile = <span class="keyword">new</span> File(jarURI.getPath());</span><br><span class="line">    <span class="keyword">try</span> &#123;</span><br><span class="line">        inst.appendToBootstrapClassLoaderSearch(<span class="keyword">new</span> JarFile(agentFile));</span><br><span class="line">    &#125; <span class="keyword">catch</span> (Throwable e) &#123;</span><br><span class="line">        DebugInfo.error(<span class="string">&quot;Can not access `ja-netfilter` jar file.&quot;</span>, e);</span><br><span class="line">        <span class="keyword">return</span>;</span><br><span class="line">    &#125;</span><br><span class="line"></span><br><span class="line">    <span class="comment">// 解析程序参数并初始化</span></span><br><span class="line">    Initializer.init(inst, <span class="keyword">new</span> Environment(agentFile, args, attachMode)); <span class="comment">// for some custom UrlLoaders</span></span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>来到 init 方法，根据 environment 来创建 Dispatcher 实例，该 Dispatcher 设计运用了委托者模式，用于衔接 javaagent 与 ja-netfilter。随后创建 PluginManager 实例来加载 plugin 插件，并将 dispatcher 添加到 Instrumentation 中，因 dispatcher  实现了 ClassFileTransformer 接口，当进行 transformer 操作时候，会调用其 transform 方法。</p>
+<p>之后根据 Dispatcher 的 getHookClassNames 来获取插件需要 HOOK 的类名，并遍历 Instrumentation 所有加载的类，如果类符合 HOOK 要求，那么调用其的 retransformClasses 方法进行 transformer 操作，最后来到 Dispatcher 的 transform 方法。</p>
+<figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// com.janetfilter.core.Initializer#init</span></span><br><span class="line"><span class="function"><span class="keyword">public</span> <span class="keyword">static</span> <span class="keyword">void</span> <span class="title">init</span><span class="params">(Instrumentation inst, Environment environment)</span> </span>&#123;</span><br><span class="line">    DebugInfo.useFile(environment.getLogsDir());</span><br><span class="line">    DebugInfo.info(environment.toString());</span><br><span class="line"></span><br><span class="line">    Dispatcher dispatcher = <span class="keyword">new</span> Dispatcher(environment);</span><br><span class="line">    <span class="comment">// 加载 plugins 目录下的插件</span></span><br><span class="line">    <span class="keyword">new</span> PluginManager(inst, dispatcher, environment).loadPlugins();</span><br><span class="line"></span><br><span class="line">    <span class="comment">// 添加 dispatcher 作为整个拦截的入口点</span></span><br><span class="line">    inst.addTransformer(dispatcher, <span class="keyword">true</span>);</span><br><span class="line">    inst.setNativeMethodPrefix(dispatcher, environment.getNativePrefix());</span><br><span class="line"></span><br><span class="line">    <span class="comment">// 获取需要被 hook 的 class name</span></span><br><span class="line">    Set&lt;String&gt; classSet = dispatcher.getHookClassNames();</span><br><span class="line">    <span class="keyword">for</span> (Class&lt;?&gt; c : inst.getAllLoadedClasses()) &#123;</span><br><span class="line">        String name = c.getName();</span><br><span class="line">        <span class="comment">// 当前 class 不需要被 hook</span></span><br><span class="line">        <span class="keyword">if</span> (!classSet.contains(name)) &#123;</span><br><span class="line">            <span class="keyword">continue</span>;</span><br><span class="line">        &#125;</span><br><span class="line"></span><br><span class="line">        <span class="keyword">try</span> &#123;</span><br><span class="line">            <span class="comment">// 交由 Dispatcher 进行 hook 操作</span></span><br><span class="line">            <span class="comment">// 内部会调用其 transform 方法</span></span><br><span class="line">            inst.retransformClasses(c);</span><br><span class="line">        &#125; <span class="keyword">catch</span> (Throwable e) &#123;</span><br><span class="line">            DebugInfo.error(<span class="string">&quot;Retransform class failed: &quot;</span> + name, e);</span><br><span class="line">        &#125;</span><br><span class="line">    &#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<h3 id="加载插件"><a href="#加载插件" class="headerlink" title="加载插件"></a>加载插件</h3><p>PluginManager 的 loadPlugins 方法目的是为了从 plugins 目录下加载插件，首先获取到插件目录，之后加载目录下所有文件进行一个过滤操作，为了扫描出其中所有的 jar 包文件。</p>
+<p>因加载插件是一个耗时操作，所以采用了线程池设计，每个 plugin file 会被包装成 PluginLoadTask 提交给线程 池，执行时会调用其 run 方法。当所有 task 都提交到线程池，会进行 shutdown 操作，随后等待线程池 30s 终止，倘若执行超时，则判定加载插件超时。</p>
+<figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// com.janetfilter.core.plugin.PluginManager#loadPlugins</span></span><br><span class="line"><span class="function"><span class="keyword">public</span> <span class="keyword">void</span> <span class="title">loadPlugins</span><span class="params">()</span> </span>&#123;</span><br><span class="line">    <span class="keyword">long</span> startTime = System.currentTimeMillis();</span><br><span class="line"></span><br><span class="line">    File pluginsDirectory = environment.getPluginsDir();</span><br><span class="line">    <span class="comment">// plugins 目录不存在或 plugins 不是目录</span></span><br><span class="line">    <span class="keyword">if</span> (!pluginsDirectory.exists() || !pluginsDirectory.isDirectory()) &#123;</span><br><span class="line">        <span class="keyword">return</span>;</span><br><span class="line">    &#125;</span><br><span class="line"></span><br><span class="line">    <span class="comment">// 扫描 plugins 所有 jar 包</span></span><br><span class="line">    File[] pluginFiles = pluginsDirectory.listFiles((d, n) -&gt; n.endsWith(<span class="string">&quot;.jar&quot;</span>));</span><br><span class="line">    <span class="keyword">if</span> (<span class="keyword">null</span> == pluginFiles) &#123;</span><br><span class="line">        <span class="keyword">return</span>;</span><br><span class="line">    &#125;</span><br><span class="line"></span><br><span class="line">    <span class="keyword">try</span> &#123;</span><br><span class="line">        ExecutorService executorService = Executors.newCachedThreadPool();</span><br><span class="line">        <span class="comment">// 向线程池提交 task 来加载插件</span></span><br><span class="line">        <span class="keyword">for</span> (File pluginFile : pluginFiles) &#123;</span><br><span class="line">            executorService.submit(<span class="keyword">new</span> PluginLoadTask(pluginFile));</span><br><span class="line">        &#125;</span><br><span class="line"></span><br><span class="line">        executorService.shutdown();</span><br><span class="line">        <span class="keyword">if</span> (!executorService.awaitTermination(<span class="number">30L</span>, TimeUnit.SECONDS)) &#123;</span><br><span class="line">            <span class="keyword">throw</span> <span class="keyword">new</span> RuntimeException(<span class="string">&quot;Load plugin timeout&quot;</span>);</span><br><span class="line">        &#125;</span><br><span class="line"></span><br><span class="line">        DebugInfo.debug(String.format(<span class="string">&quot;============ All plugins loaded, %.2fs elapsed ============&quot;</span>, (System.currentTimeMillis() - startTime) / <span class="number">1000D</span>));</span><br><span class="line">    &#125; <span class="keyword">catch</span> (Throwable e) &#123;</span><br><span class="line">        DebugInfo.error(<span class="string">&quot;Load plugin failed&quot;</span>, e);</span><br><span class="line">    &#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>如上所述，加载插件逻辑会放在 PluginLoadTask  的 run 方法中。首先获取该 plugin jar 的 manifest 信息，从而获取 jar 的 entry class name，后续由 PluginClassLoader 来将 class name 加载成 class，如果该 entry class 未实现 PluginEntry 接口，说明该 jar 不是 plugin，则不需要后续操作。</p>
+<p>获取插件的配置文件后，解析并用 PluginConfig 进行表示，然后调用 PluginEntry#init 对插件进行初始化，最后将 Plugin 的 MyTransformer 实现添加到 Dispatcher 中，从而完成插件加载化。</p>
+<figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">public</span> <span class="keyword">void</span> <span class="title">run</span><span class="params">()</span> </span>&#123;</span><br><span class="line">    <span class="keyword">try</span> &#123;</span><br><span class="line">        <span class="keyword">if</span> (pluginFile.getName().endsWith(environment.getDisabledPluginSuffix())) &#123;</span><br><span class="line">            DebugInfo.debug(<span class="string">&quot;Disabled plugin: &quot;</span> + pluginFile + <span class="string">&quot;, ignored.&quot;</span>);</span><br><span class="line">            <span class="keyword">return</span>;</span><br><span class="line">        &#125;</span><br><span class="line"></span><br><span class="line">        JarFile jarFile = <span class="keyword">new</span> JarFile(pluginFile);</span><br><span class="line">        Manifest manifest = jarFile.getManifest();</span><br><span class="line">        <span class="comment">// 从 jar 的 manifest 配置文件中获取 entry 类</span></span><br><span class="line">        String entryClass = manifest.getMainAttributes().getValue(ENTRY_NAME);</span><br><span class="line">        <span class="keyword">if</span> (StringUtils.isEmpty(entryClass)) &#123;</span><br><span class="line">            <span class="keyword">return</span>;</span><br><span class="line">        &#125;</span><br><span class="line"></span><br><span class="line">        PluginClassLoader classLoader = <span class="keyword">new</span> PluginClassLoader(jarFile);</span><br><span class="line">        Class&lt;?&gt; klass = Class.forName(entryClass, <span class="keyword">false</span>, classLoader);</span><br><span class="line">        <span class="comment">// entry class 未实现 PluginEntry 接口，说明这不是个 Plugin，那么直接 return</span></span><br><span class="line">        <span class="keyword">if</span> (!Arrays.asList(klass.getInterfaces()).contains(PluginEntry.class)) &#123;</span><br><span class="line">            <span class="keyword">return</span>;</span><br><span class="line">        &#125;</span><br><span class="line"></span><br><span class="line">        <span class="keyword">synchronized</span> (inst) &#123;</span><br><span class="line">            inst.appendToBootstrapClassLoaderSearch(jarFile);</span><br><span class="line">        &#125;</span><br><span class="line"></span><br><span class="line">        PluginEntry pluginEntry = (PluginEntry) Class.forName(entryClass).newInstance();</span><br><span class="line"></span><br><span class="line">        <span class="comment">// 获取对应插件的配置文件</span></span><br><span class="line">        File configFile = <span class="keyword">new</span> File(environment.getConfigDir(), pluginEntry.getName().toLowerCase() + <span class="string">&quot;.conf&quot;</span>);</span><br><span class="line">        <span class="comment">// 加载与解析配置</span></span><br><span class="line">        PluginConfig pluginConfig = <span class="keyword">new</span> PluginConfig(configFile, ConfigParser.parse(configFile));</span><br><span class="line">        <span class="comment">// 对插件初始化</span></span><br><span class="line">        pluginEntry.init(environment, pluginConfig);</span><br><span class="line"></span><br><span class="line">        <span class="comment">// 将插件添加到 Dispatcher 中</span></span><br><span class="line">        dispatcher.addTransformers(pluginEntry.getTransformers());</span><br><span class="line"></span><br><span class="line">        DebugInfo.debug(<span class="string">&quot;Plugin loaded: &#123;name=&quot;</span> + pluginEntry.getName() + <span class="string">&quot;, version=&quot;</span> + pluginEntry.getVersion() + <span class="string">&quot;, author=&quot;</span> + pluginEntry.getAuthor() + <span class="string">&quot;&#125;&quot;</span>);</span><br><span class="line">    &#125; <span class="keyword">catch</span> (Throwable e) &#123;</span><br><span class="line">        DebugInfo.error(<span class="string">&quot;Parse plugin info failed&quot;</span>, e);</span><br><span class="line">    &#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+
+<h3 id="执行插件"><a href="#执行插件" class="headerlink" title="执行插件"></a>执行插件</h3><p>调用 Instrumentation#retransformClasses  后，会来到 Dispatcher#transform 方法，该方法会通过 classname 获取到该 class 所有的 MyTransformer，并循环遍历调用每个生命周期方法，最终得到 class 字节流进行返回即可。</p>
+<blockquote>
+<p>要对 class 进行修改，需要借助 ASM，该库可以修改 class，并动态生成新的 class。</p>
+</blockquote>
+<figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// com.janetfilter.core.Dispatcher#transform</span></span><br><span class="line"><span class="keyword">public</span> <span class="keyword">byte</span>[] transform(ClassLoader loader, String className, Class&lt;?&gt; classBeingRedefined, ProtectionDomain protectionDomain, <span class="keyword">byte</span>[] classFileBuffer) <span class="keyword">throws</span> IllegalClassFormatException &#123;</span><br><span class="line">    <span class="keyword">do</span> &#123;</span><br><span class="line">        <span class="keyword">if</span> (<span class="keyword">null</span> == className) &#123;</span><br><span class="line">            <span class="keyword">break</span>;</span><br><span class="line">        &#125;</span><br><span class="line"></span><br><span class="line">        <span class="comment">// 获取该 class 所有的 MyTransformer</span></span><br><span class="line">        List&lt;MyTransformer&gt; transformers = transformerMap.get(className);</span><br><span class="line">        <span class="comment">// 未获取到，说明该 class 并不需要被 transformer</span></span><br><span class="line">        <span class="keyword">if</span> (<span class="keyword">null</span> == transformers) &#123;</span><br><span class="line">            <span class="keyword">break</span>;</span><br><span class="line">        &#125;</span><br><span class="line"></span><br><span class="line">        <span class="keyword">int</span> order = <span class="number">0</span>;</span><br><span class="line"></span><br><span class="line">        <span class="comment">// 进行生命周期调用</span></span><br><span class="line">        <span class="keyword">try</span> &#123;</span><br><span class="line">            <span class="keyword">for</span> (MyTransformer transformer : globalTransformers) &#123;</span><br><span class="line">                transformer.before(className, classFileBuffer);</span><br><span class="line">            &#125;</span><br><span class="line"></span><br><span class="line">            <span class="keyword">for</span> (MyTransformer transformer : globalTransformers) &#123;</span><br><span class="line">                classFileBuffer = transformer.preTransform(className, classFileBuffer, order++);</span><br><span class="line">            &#125;</span><br><span class="line"></span><br><span class="line">            <span class="keyword">for</span> (MyTransformer transformer : transformers) &#123;</span><br><span class="line">                classFileBuffer = transformer.transform(className, classFileBuffer, order++);</span><br><span class="line">            &#125;</span><br><span class="line"></span><br><span class="line">            <span class="keyword">for</span> (MyTransformer transformer : globalTransformers) &#123;</span><br><span class="line">                classFileBuffer = transformer.postTransform(className, classFileBuffer, order++);</span><br><span class="line">            &#125;</span><br><span class="line"></span><br><span class="line">            <span class="keyword">for</span> (MyTransformer transformer : globalTransformers) &#123;</span><br><span class="line">                transformer.after(className, classFileBuffer);</span><br><span class="line">            &#125;</span><br><span class="line">        &#125; <span class="keyword">catch</span> (Throwable e) &#123;</span><br><span class="line">            DebugInfo.error(<span class="string">&quot;Transform class failed: &quot;</span> + className, e);</span><br><span class="line">        &#125;</span><br><span class="line">    &#125; <span class="keyword">while</span> (<span class="keyword">false</span>);</span><br><span class="line"></span><br><span class="line">    <span class="keyword">return</span> classFileBuffer;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+
+<h2 id="reference"><a href="#reference" class="headerlink" title="reference"></a>reference</h2><ul>
+<li><a target="_blank" rel="noopener" href="https://github.com/ja-netfilter/ja-netfilter">ja-netfilter</a></li>
+<li><a target="_blank" rel="noopener" href="https://docs.oracle.com/javase/7/docs/api/java/lang/instrument/package-summary.html">jdk doc</a></li>
+<li><a target="_blank" rel="noopener" href="https://asm.ow2.io/">asm</a></li>
+</ul>
+
+    </div>
+
+    
+    
+    
+
+      <footer class="post-footer">
+          <div class="post-tags">
+              <a href="/tags/ja-netfilter/" <i class="fa fa-tag"></i>ja-netfilter</a>
+              <a href="/tags/design/" <i class="fa fa-tag"></i>design</a>
+          </div>
+
+        
+
+
+        
+    <div class="post-nav">
+      <div class="post-nav-item">
+    <a href="/2022/01/26/Golang-WAL-%E8%AE%BE%E8%AE%A1%E4%B8%8E%E5%AE%9E%E7%8E%B0/" rel="prev" title="Golang WAL 设计与实现">
+      <i class="fa fa-chevron-left"></i> Golang WAL 设计与实现
+    </a></div>
+      <div class="post-nav-item">
+    <a href="/2022/02/17/jclasslib-%E3%80%8CAttach-To-Running-JVM%E3%80%8D-%E5%AE%9E%E7%8E%B0/" rel="next" title="jclasslib 「Attach To Running JVM」 实现">
+      jclasslib 「Attach To Running JVM」 实现 <i class="fa fa-chevron-right"></i>
+    </a></div>
+    </div>
+      </footer>
+    
+  </article>
+  
+  
+  
+
+
+
+          </div>
+          
+
+<script>
+  window.addEventListener('tabs:register', () => {
+    let { activeClass } = CONFIG.comments;
+    if (CONFIG.comments.storage) {
+      activeClass = localStorage.getItem('comments_active') || activeClass;
+    }
+    if (activeClass) {
+      let activeTab = document.querySelector(`a[href="#comment-${activeClass}"]`);
+      if (activeTab) {
+        activeTab.click();
+      }
+    }
+  });
+  if (CONFIG.comments.storage) {
+    window.addEventListener('tabs:click', event => {
+      if (!event.target.matches('.tabs-comment .tab-content .tab-pane')) return;
+      let commentClass = event.target.classList[1];
+      localStorage.setItem('comments_active', commentClass);
+    });
+  }
+</script>
+
+        </div>
+          
+  
+  <div class="toggle sidebar-toggle">
+    <span class="toggle-line toggle-line-first"></span>
+    <span class="toggle-line toggle-line-middle"></span>
+    <span class="toggle-line toggle-line-last"></span>
+  </div>
+
+  <aside class="sidebar">
+    <div class="sidebar-inner">
+
+      <ul class="sidebar-nav motion-element">
+        <li class="sidebar-nav-toc">
+          文章目录
+        </li>
+        <li class="sidebar-nav-overview">
+          站点概览
+        </li>
+      </ul>
+
+      <!--noindex-->
+      <div class="post-toc-wrap sidebar-panel">
+          <div class="post-toc motion-element"><ol class="nav"><li class="nav-item nav-level-2"><a class="nav-link" href="#example"><span class="nav-number">1.</span> <span class="nav-text">example</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#implement"><span class="nav-number">2.</span> <span class="nav-text">implement</span></a><ol class="nav-child"><li class="nav-item nav-level-3"><a class="nav-link" href="#%E5%8A%A0%E8%BD%BD%E6%8F%92%E4%BB%B6"><span class="nav-number">2.1.</span> <span class="nav-text">加载插件</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#%E6%89%A7%E8%A1%8C%E6%8F%92%E4%BB%B6"><span class="nav-number">2.2.</span> <span class="nav-text">执行插件</span></a></li></ol></li><li class="nav-item nav-level-2"><a class="nav-link" href="#reference"><span class="nav-number">3.</span> <span class="nav-text">reference</span></a></li></ol></div>
+      </div>
+      <!--/noindex-->
+
+      <div class="site-overview-wrap sidebar-panel">
+        <div class="site-author motion-element" itemprop="author" itemscope itemtype="http://schema.org/Person">
+    <img class="site-author-image" itemprop="image" alt="predicate"
+      src="/images/avatar.jpg">
+  <p class="site-author-name" itemprop="name">predicate</p>
+  <div class="site-description" itemprop="description">因为热爱，所以坚持。</div>
+</div>
+<div class="site-state-wrap motion-element">
+  <nav class="site-state">
+      <div class="site-state-item site-state-posts">
+          <a href="/archives/">
+        
+          <span class="site-state-item-count">21</span>
+          <span class="site-state-item-name">日志</span>
+        </a>
+      </div>
+      <div class="site-state-item site-state-categories">
+            <a href="/categories/">
+          
+        <span class="site-state-item-count">13</span>
+        <span class="site-state-item-name">分类</span></a>
+      </div>
+      <div class="site-state-item site-state-tags">
+            <a href="/tags/">
+          
+        <span class="site-state-item-count">27</span>
+        <span class="site-state-item-name">标签</span></a>
+      </div>
+  </nav>
+</div>
+  <div class="links-of-author motion-element">
+      <span class="links-of-author-item">
+        <a href="https://github.com/killlowkey" title="GitHub → https:&#x2F;&#x2F;github.com&#x2F;killlowkey" rel="noopener" target="_blank"><i class="fa fa-fw fa-github"></i>GitHub</a>
+      </span>
+  </div>
+
+
+
+      </div>
+
+    </div>
+  </aside>
+  <div id="sidebar-dimmer"></div>
+
+
+      </div>
+    </main>
+
+    <footer class="footer">
+      <div class="footer-inner">
+        
+
+        
+
+<div class="copyright">
+  
+  &copy; 
+  <span itemprop="copyrightYear">2022</span>
+  <span class="with-love">
+    <i class="fa fa-user"></i>
+  </span>
+  <span class="author" itemprop="copyrightHolder">predicate</span>
+</div>
+  <div class="powered-by">由 <a href="https://hexo.io/" class="theme-link" rel="noopener" target="_blank">Hexo</a> & <a href="https://theme-next.org/" class="theme-link" rel="noopener" target="_blank">NexT.Gemini</a> 强力驱动
+  </div>
+
+        
+
+
+
+
+
+
+
+
+      </div>
+    </footer>
+  </div>
+
+  
+  <script src="/lib/anime.min.js"></script>
+  <script src="/lib/velocity/velocity.min.js"></script>
+  <script src="/lib/velocity/velocity.ui.min.js"></script>
+
+<script src="/js/utils.js"></script>
+
+<script src="/js/motion.js"></script>
+
+
+<script src="/js/schemes/pisces.js"></script>
+
+
+<script src="/js/next-boot.js"></script>
+
+
+
+
+  
+
+
+
+
+  
+<script src="/js/local-search.js"></script>
+
+
+
+
+
+
+
+
+
+
+
+
+
+  
+
+  
+
+</body>
+</html>

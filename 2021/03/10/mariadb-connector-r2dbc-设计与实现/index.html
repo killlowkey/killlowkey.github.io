@@ -1,0 +1,524 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=2">
+<meta name="theme-color" content="#222">
+<meta name="generator" content="Hexo 5.3.0">
+  <link rel="apple-touch-icon" sizes="180x180" href="/images/apple-touch-icon-next.png">
+  <link rel="icon" type="image/png" sizes="32x32" href="/images/favicon-32x32-next.png">
+  <link rel="icon" type="image/png" sizes="16x16" href="/images/favicon-16x16-next.png">
+  <link rel="mask-icon" href="/images/logo.svg" color="#222">
+
+<link rel="stylesheet" href="/css/main.css">
+
+
+<link rel="stylesheet" href="/lib/font-awesome/css/font-awesome.min.css">
+
+<script id="hexo-configurations">
+    var NexT = window.NexT || {};
+    var CONFIG = {"hostname":"example.com","root":"/","scheme":"Gemini","version":"7.8.0","exturl":false,"sidebar":{"position":"left","display":"post","padding":18,"offset":12,"onmobile":false},"copycode":{"enable":false,"show_result":false,"style":null},"back2top":{"enable":true,"sidebar":false,"scrollpercent":false},"bookmark":{"enable":false,"color":"#222","save":"auto"},"fancybox":false,"mediumzoom":false,"lazyload":false,"pangu":false,"comments":{"style":"tabs","active":null,"storage":true,"lazyload":false,"nav":null},"algolia":{"hits":{"per_page":10},"labels":{"input_placeholder":"Search for Posts","hits_empty":"We didn't find any results for the search: ${query}","hits_stats":"${hits} results found in ${time} ms"}},"localsearch":{"enable":true,"trigger":"auto","top_n_per_article":1,"unescape":false,"preload":false},"motion":{"enable":true,"async":false,"transition":{"post_block":"fadeIn","post_header":"slideDownIn","post_body":"slideDownIn","coll_header":"slideLeftIn","sidebar":"slideUpIn"}},"path":"search.xml"};
+  </script>
+
+  <meta name="description" content="随着响应式（Reactor）编程日益火热，响应式配套组件也在渐渐的完善。将响应式引入到了数据库，其响应式的背压机制与资源调度等特性可以带来巨大的性能。相比传统编程而言，当 Web 服务中入站流量大起来，如果都是一些数据库的操作的话，此时流量会一股脑的冲向数据库，就很容易将数据库压垮（数据库流量一大，可能会导致数据库宕机）。面对这种情况可以使用消息队列来进行削峰填谷，但是维护消息队列也是需要成本的，">
+<meta property="og:type" content="article">
+<meta property="og:title" content="mariadb-connector-r2dbc 设计与实现">
+<meta property="og:url" content="http://example.com/2021/03/10/mariadb-connector-r2dbc-%E8%AE%BE%E8%AE%A1%E4%B8%8E%E5%AE%9E%E7%8E%B0/index.html">
+<meta property="og:site_name" content="predicate | blog">
+<meta property="og:description" content="随着响应式（Reactor）编程日益火热，响应式配套组件也在渐渐的完善。将响应式引入到了数据库，其响应式的背压机制与资源调度等特性可以带来巨大的性能。相比传统编程而言，当 Web 服务中入站流量大起来，如果都是一些数据库的操作的话，此时流量会一股脑的冲向数据库，就很容易将数据库压垮（数据库流量一大，可能会导致数据库宕机）。面对这种情况可以使用消息队列来进行削峰填谷，但是维护消息队列也是需要成本的，">
+<meta property="og:locale" content="zh_CN">
+<meta property="article:published_time" content="2021-03-10T07:06:00.000Z">
+<meta property="article:modified_time" content="2022-03-24T04:57:14.180Z">
+<meta property="article:author" content="predicate">
+<meta property="article:tag" content="Reactor">
+<meta property="article:tag" content="MySQL">
+<meta property="article:tag" content="MariaDB">
+<meta property="article:tag" content="Reactor-Netty">
+<meta property="article:tag" content="R2DBC">
+<meta name="twitter:card" content="summary">
+
+<link rel="canonical" href="http://example.com/2021/03/10/mariadb-connector-r2dbc-%E8%AE%BE%E8%AE%A1%E4%B8%8E%E5%AE%9E%E7%8E%B0/">
+
+
+<script id="page-configurations">
+  // https://hexo.io/docs/variables.html
+  CONFIG.page = {
+    sidebar: "",
+    isHome : false,
+    isPost : true,
+    lang   : 'zh-CN'
+  };
+</script>
+
+  <title>mariadb-connector-r2dbc 设计与实现 | predicate | blog</title>
+  
+
+
+
+
+
+
+  <noscript>
+  <style>
+  .use-motion .brand,
+  .use-motion .menu-item,
+  .sidebar-inner,
+  .use-motion .post-block,
+  .use-motion .pagination,
+  .use-motion .comments,
+  .use-motion .post-header,
+  .use-motion .post-body,
+  .use-motion .collection-header { opacity: initial; }
+
+  .use-motion .site-title,
+  .use-motion .site-subtitle {
+    opacity: initial;
+    top: initial;
+  }
+
+  .use-motion .logo-line-before i { left: initial; }
+  .use-motion .logo-line-after i { right: initial; }
+  </style>
+</noscript>
+
+</head>
+
+<body itemscope itemtype="http://schema.org/WebPage">
+  <div class="container use-motion">
+    <div class="headband"></div>
+
+    <header class="header" itemscope itemtype="http://schema.org/WPHeader">
+      <div class="header-inner"><div class="site-brand-container">
+  <div class="site-nav-toggle">
+    <div class="toggle" aria-label="切换导航栏">
+      <span class="toggle-line toggle-line-first"></span>
+      <span class="toggle-line toggle-line-middle"></span>
+      <span class="toggle-line toggle-line-last"></span>
+    </div>
+  </div>
+
+  <div class="site-meta">
+
+    <a href="/" class="brand" rel="start">
+      <span class="logo-line-before"><i></i></span>
+      <h1 class="site-title">predicate | blog</h1>
+      <span class="logo-line-after"><i></i></span>
+    </a>
+      <p class="site-subtitle" itemprop="description">你好，世界！</p>
+  </div>
+
+  <div class="site-nav-right">
+    <div class="toggle popup-trigger">
+        <i class="fa fa-search fa-fw fa-lg"></i>
+    </div>
+  </div>
+</div>
+
+
+
+
+<nav class="site-nav">
+  <ul id="menu" class="menu">
+        <li class="menu-item menu-item-home">
+
+    <a href="/" rel="section"><i class="fa fa-fw fa-home"></i>首页</a>
+
+  </li>
+        <li class="menu-item menu-item-categories">
+
+    <a href="/categories/" rel="section"><i class="fa fa-fw fa-th"></i>分类</a>
+
+  </li>
+        <li class="menu-item menu-item-tags">
+
+    <a href="/tags/" rel="section"><i class="fa fa-fw fa-tags"></i>标签</a>
+
+  </li>
+        <li class="menu-item menu-item-archives">
+
+    <a href="/archives/" rel="section"><i class="fa fa-fw fa-archive"></i>归档</a>
+
+  </li>
+      <li class="menu-item menu-item-search">
+        <a role="button" class="popup-trigger"><i class="fa fa-search fa-fw"></i>搜索
+        </a>
+      </li>
+  </ul>
+</nav>
+
+
+
+  <div class="search-pop-overlay">
+    <div class="popup search-popup">
+        <div class="search-header">
+  <span class="search-icon">
+    <i class="fa fa-search"></i>
+  </span>
+  <div class="search-input-container">
+    <input autocomplete="off" autocapitalize="off"
+           placeholder="搜索..." spellcheck="false"
+           type="search" class="search-input">
+  </div>
+  <span class="popup-btn-close">
+    <i class="fa fa-times-circle"></i>
+  </span>
+</div>
+<div id="search-result">
+  <div id="no-result">
+    <i class="fa fa-spinner fa-pulse fa-5x fa-fw"></i>
+  </div>
+</div>
+
+    </div>
+  </div>
+
+</div>
+    </header>
+
+    
+  <div class="back-to-top">
+    <i class="fa fa-arrow-up"></i>
+    <span>0%</span>
+  </div>
+
+
+    <main class="main">
+      <div class="main-inner">
+        <div class="content-wrap">
+          
+
+          <div class="content post posts-expand">
+            
+
+    
+  
+  
+  <article itemscope itemtype="http://schema.org/Article" class="post-block" lang="zh-CN">
+    <link itemprop="mainEntityOfPage" href="http://example.com/2021/03/10/mariadb-connector-r2dbc-%E8%AE%BE%E8%AE%A1%E4%B8%8E%E5%AE%9E%E7%8E%B0/">
+
+    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
+      <meta itemprop="image" content="/images/avatar.jpg">
+      <meta itemprop="name" content="predicate">
+      <meta itemprop="description" content="因为热爱，所以坚持。">
+    </span>
+
+    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
+      <meta itemprop="name" content="predicate | blog">
+    </span>
+      <header class="post-header">
+        <h1 class="post-title" itemprop="name headline">
+          mariadb-connector-r2dbc 设计与实现
+        </h1>
+
+        <div class="post-meta">
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="fa fa-calendar-o"></i>
+              </span>
+              <span class="post-meta-item-text">发表于</span>
+
+              <time title="创建时间：2021-03-10 15:06:00" itemprop="dateCreated datePublished" datetime="2021-03-10T15:06:00+08:00">2021-03-10</time>
+            </span>
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="fa fa-folder-o"></i>
+              </span>
+              <span class="post-meta-item-text">分类于</span>
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
+                  <a href="/categories/R2DBC/" itemprop="url" rel="index"><span itemprop="name">R2DBC</span></a>
+                </span>
+            </span>
+
+          
+
+        </div>
+      </header>
+
+    
+    
+    
+    <div class="post-body" itemprop="articleBody">
+
+      
+        <p>随着响应式（Reactor）编程日益火热，响应式配套组件也在渐渐的完善。将响应式引入到了数据库，其响应式的背压机制与资源调度等特性可以带来巨大的性能。相比传统编程而言，当 Web 服务中入站流量大起来，如果都是一些数据库的操作的话，此时流量会一股脑的冲向数据库，就很容易将数据库压垮（数据库流量一大，可能会导致数据库宕机）。面对这种情况可以使用消息队列来进行削峰填谷，但是维护消息队列也是需要成本的，倘若项目要求的并发不高，可以使用响应式的背压机制，在客户端与服务端之间建立一层缓冲，之后对数据库的操作都会先经过背压这层缓冲，然后发送给数据库。<a id="more"></a>响应式对数据库操作是完全非阻塞的，Reactor 提供 Mono 和 Flux 两个核心 API，它们的 <code>subscribeOn</code> 与 <code>publishOn</code> 方法可以对资源进行细粒度的调度，前者用于改变订阅与下发元素处理线程，而后者用于改变下发元素处理线程，在进行响应式开发中，我们只需根据任务类型（计算型任务或IO型任务）来选择合适调度器即可。</p>
+<blockquote>
+<p>背压并不是银弹，当流量大起来还是需要使用消息队列和Redis的，背压只是在一定程度上减轻数据库的压力。</p>
+</blockquote>
+<h2 id="什么是-R2DBC-SPI"><a href="#什么是-R2DBC-SPI" class="headerlink" title="什么是 R2DBC-SPI"></a>什么是 R2DBC-SPI</h2><blockquote>
+<p><code>r2dbc-spi</code> github：<a target="_blank" rel="noopener" href="https://github.com/r2dbc/r2dbc-spi">https://github.com/r2dbc/r2dbc-spi</a></p>
+</blockquote>
+<p>R2DBC 全称是响应式关系型数据库连接（Reactive Relational Database Connectivity），R2DBC 作为响应式基础组件，此时就需要一套规范用于在响应式中规范数据库操作，随之 R2DBC-SPI 就应景而生了。R2DBC-SPI 与 JDBC 本质上相同，都是为了给数据库操作提供一层通用抽象，只是两者的侧重点不同，前者是完全非阻塞的，而后者则是阻塞的，因为 JDBC 在底层 API 设计上就不支持非阻塞。</p>
+<h2 id="mariadb-connector-r2dbc-简介"><a href="#mariadb-connector-r2dbc-简介" class="headerlink" title="mariadb-connector-r2dbc 简介"></a><code>mariadb-connector-r2dbc</code> 简介</h2><blockquote>
+<p><code>mariadb-connector-r2dbc</code> github：<a target="_blank" rel="noopener" href="https://github.com/mariadb-corporation/mariadb-connector-r2dbc">https://github.com/mariadb-corporation/mariadb-connector-r2dbc</a></p>
+<p><code>r2dbc-mysql</code> github：<a target="_blank" rel="noopener" href="https://github.com/mirromutth/r2dbc-mysql">https://github.com/mirromutth/r2dbc-mysql</a></p>
+</blockquote>
+<p>目前市面上有  <a target="_blank" rel="noopener" href="https://github.com/mariadb-corporation/mariadb-connector-r2dbc">mariadb-connector-r2dbc </a> 与 <a target="_blank" rel="noopener" href="https://github.com/mirromutth/r2dbc-mysql">r2dbc-mysql</a> 两款 MySQL R2DBC 驱动，在进行项目开发时比较推荐使用 <code>mariadb-connector-r2dbc</code> 作为 MySQL R2DBC 驱动。前者的作者拥有二十余年的 Java 开发经验，同时我也看过这两者的源码，在设计上  <code>mariadb-connector-r2dbc</code> 要比 <code>r2dbc-mysql</code> 更优秀，并且 <code>mariadb-connector-r2dbc</code> 支持 MySQL 和 MariaDB 数据库， 个人觉得前者的潜力是要优于后者。</p>
+<h2 id="客户端与服务端消息协议"><a href="#客户端与服务端消息协议" class="headerlink" title="客户端与服务端消息协议"></a>客户端与服务端消息协议</h2><p>客户端向服务端发送数据称为请求（request），而服务端返回给客户端的数据称为响应（response），在 <code>mariadb-connector-r2dbc</code> 中通过<code>ClientMessage</code>和 <code>ServerMessage</code> 接口来区分客户端与服务端消息。</p>
+<h3 id="ClientMessage"><a href="#ClientMessage" class="headerlink" title="ClientMessage"></a><code>ClientMessage</code></h3><p>如果客户端需要向数据库发送一条查询 SQL 语句，就需要将 SQL 编码成指定的二进制数据，然后发送给数据库处理。对应在 ClientMessage 接口设计上，该接口中提供了一个 encode 方法，看到方法的签名，该方法接收Context 与 ByteBufAllocator 对象作为方法参数，方法返回类型是一个 ByteBuf 对象，因为 <code>mariadb-connector-r2dbc</code> 使用 reactor-netty 作为数据的传输层，而 reactor-netty 底层又是基于 netty，所以采用 ByteBuf 作为返回类型来对接 netty。</p>
+<p> ClientMessage 实现不同对消息编码操作也是不同的，通过 encode 方法可以将具体的编码操作交于对应的实现类，这样起到了一个解耦的作用。我们还可以根据运行时上下文数据 <code>Context</code> 来对消息进行编码操作。Context 在 Reactor 用于持久化一些运行时数据，而在传统编程中使用 ThreadLocal 来进行存储，其实 ThreadLocal 并不合适在 Reactor 场景下使用，因为 Reactor 代码执行时会不断地切换线程，倘若使用了 ThreadLocal 来持久化运行时数据，不但增加了实现复杂度，还可能导致内存泄露。</p>
+<figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// org.mariadb.r2dbc.message.client.ClientMessage</span></span><br><span class="line"><span class="keyword">public</span> <span class="class"><span class="keyword">interface</span> <span class="title">ClientMessage</span> </span>&#123;</span><br><span class="line">    </span><br><span class="line">  <span class="function"><span class="keyword">default</span> Sequencer <span class="title">getSequencer</span><span class="params">()</span> </span>&#123;</span><br><span class="line">    <span class="keyword">return</span> <span class="keyword">new</span> Sequencer((<span class="keyword">byte</span>) <span class="number">0xff</span>);</span><br><span class="line">  &#125;</span><br><span class="line"></span><br><span class="line">  <span class="function">ByteBuf <span class="title">encode</span><span class="params">(Context context, ByteBufAllocator byteBufAllocator)</span></span>;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+
+<h3 id="ServerMessage"><a href="#ServerMessage" class="headerlink" title="ServerMessage"></a><code>ServerMessage</code></h3><p>ServerMessage 接口并未有 decode 操作，对于服务端消息来说，解码操作不应该放到该接口里面。只需根据消息的类型来选择对应的解码操作即可，那么可以将这些操作封装在一些特定的解码器中（参考 <code>org.mariadb.r2dbc.client.DecoderState</code>），解析之后将消息下发给对应的 Flux 处理即可。</p>
+<figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// org.mariadb.r2dbc.message.server.ServerMessage</span></span><br><span class="line"><span class="keyword">public</span> <span class="class"><span class="keyword">interface</span> <span class="title">ServerMessage</span> </span>&#123;</span><br><span class="line">    </span><br><span class="line">  <span class="function"><span class="keyword">default</span> Sequencer <span class="title">getSequencer</span><span class="params">()</span> </span>&#123;</span><br><span class="line">    <span class="keyword">return</span> <span class="keyword">null</span>;</span><br><span class="line">  &#125;</span><br><span class="line"></span><br><span class="line">  <span class="function"><span class="keyword">default</span> <span class="keyword">boolean</span> <span class="title">ending</span><span class="params">()</span> </span>&#123;</span><br><span class="line">    <span class="keyword">return</span> <span class="keyword">false</span>;</span><br><span class="line">  &#125;</span><br><span class="line"></span><br><span class="line">  <span class="function"><span class="keyword">default</span> <span class="keyword">boolean</span> <span class="title">resultSetEnd</span><span class="params">()</span> </span>&#123;</span><br><span class="line">    <span class="keyword">return</span> <span class="keyword">false</span>;</span><br><span class="line">  &#125;</span><br><span class="line">    </span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<h2 id="MariadbConnectionFactory-源码解读"><a href="#MariadbConnectionFactory-源码解读" class="headerlink" title="MariadbConnectionFactory 源码解读"></a>MariadbConnectionFactory 源码解读</h2><p>MariadbConnectionFactory  实现了 <code>r2dbc-spi</code> 中的 ConnectionFactory 接口，该接口设计的也很简单，可以通过 create() 方法来获取数据库链接，另外还提供一个 getMetadata() 方法用于获取工厂的元信息。</p>
+<figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">public</span> <span class="class"><span class="keyword">interface</span> <span class="title">ConnectionFactory</span> </span>&#123;</span><br><span class="line">    </span><br><span class="line">    Publisher&lt;? extends Connection&gt; create();</span><br><span class="line">    </span><br><span class="line">    <span class="function">ConnectionFactoryMetadata <span class="title">getMetadata</span><span class="params">()</span></span>;</span><br><span class="line">    </span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>之后看到 MariadbConnectionFactory 构造器，接收一个 MariadbConnectionConfiguration 对象来作为构造器参数，通过该对象来实例化  MariadbConnectionFactory ，那么这个参数必然有数据库配置的信息，因为 ConnectionFactory 接口定义了一个无参的 create() 方法来获取链接，那么数据库配置信息来源就能排除从 create() 方法传入，此时只能通过构造器参数或者通过特定的方法来设置。</p>
+<figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">//   org.mariadb.r2dbc.MariadbConnectionFactory#MariadbConnectionFactory</span></span><br><span class="line"><span class="function"><span class="keyword">public</span> <span class="title">MariadbConnectionFactory</span><span class="params">(MariadbConnectionConfiguration configuration)</span> </span>&#123;</span><br><span class="line">    <span class="keyword">this</span>.configuration = Assert.requireNonNull(configuration, <span class="string">&quot;configuration must not be null&quot;</span>);</span><br><span class="line">    <span class="keyword">this</span>.endpoint = createSocketAddress(configuration);</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>有了工厂实例后，就可以调用该工厂的 create() 方法来创建数据库链接。进入 create() 方法，在该方法中调用了类中的 doCreateConnection 方法，之后得到一个 <code>Mono&lt;MariadbConnection&gt;</code> 再将结果强转成 MariadbConnection 对象。不妨有读者会产生疑问，既然都是同一个对象为什么还要进行转换呢？因为这两个 MariadbConnection 是在不同的包下，转换之后的<code>org.mariadb.r2dbc.api.MariadbConnection</code> 是一个接口，该接口继承了 <code>r2dbc-spi</code> 中的 Connection 接口。而<code>Mono&lt;MariadbConnection &gt;</code> 中的 MariadbConnection 是 <code>org.mariadb.r2dbc.api.MariadbConnection</code> 实现类，倘若不进行转换那么就会出现返回值与返回类型不兼容问题。它们两者的关系有点复杂，对于具体的细节，还请读者自行打开源码进行阅读。</p>
+<figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// org.mariadb.r2dbc.MariadbConnectionFactory#create</span></span><br><span class="line">  <span class="keyword">public</span> Mono&lt;org.mariadb.r2dbc.api.MariadbConnection&gt; create() &#123;</span><br><span class="line">    <span class="keyword">return</span> doCreateConnection().cast(org.mariadb.r2dbc.api.MariadbConnection.class);</span><br><span class="line">  &#125;</span><br></pre></td></tr></table></figure>
+<p>进入 <code>doCreateConnection()</code> 方法，会根据 <code>configuration.allowPipelining()</code> 来判断是否采用异步的 Client，默认情况下会使用异步的 Client，对于 ClientPipelineImpl和ClientImpl 两种客户端实现的不同，会在下文进行讲解，此时我们要知道这里客户端采用 ClientPipelineImpl 就好了。看到 14 行，此时并未与服务端建立起 Socket 链接，Reactor 不同于传统编程，只有当下游产生订阅时数据库链接操作才会开始，这也是懒加载的实现。在 15 行，Socket 链接建立之后我们会通过 <code>AuthenticationFlow#exchange</code> 来对客户端身份进行校验，也就是从 configuration 中拿到用户名和密码封装成一个 packet 之后发送给服务端，服务端校验成功之后，此时我们的链接才算真正建立了。</p>
+<p>客户端身份校验成功之后，会通过 <code>getIsolationLevel(Client)</code> 来获取数据库隔离等级。在 <code>getIsolationLevel(Client)</code> 方法中，来选择对应的数据库版本查询隔离等级的语句。之后将查询语句发送的服务端，得到服务端消息解析之后返回数据库的隔离等级。</p>
+<p>最后通过一个 map 操作将数据的隔离等级作为参数封装成 MariadbConnection 对象返回，获取数据库链接的操作已经分析完了，此时并没有与数据建立起链接，我们只是定义了链接的行为而已，当调用 <code>MariadbConnectionFactory#create</code> 得到一个 <code>Mono&lt;Connection&gt; </code> 对象，只有调用该 Mono 的 subscribe 方法之后才会进行数据库链接操作。</p>
+<figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br><span class="line">49</span><br><span class="line">50</span><br><span class="line">51</span><br><span class="line">52</span><br><span class="line">53</span><br><span class="line">54</span><br><span class="line">55</span><br><span class="line">56</span><br><span class="line">57</span><br><span class="line">58</span><br><span class="line">59</span><br><span class="line">60</span><br><span class="line">61</span><br><span class="line">62</span><br><span class="line">63</span><br><span class="line">64</span><br><span class="line">65</span><br><span class="line">66</span><br><span class="line">67</span><br><span class="line">68</span><br><span class="line">69</span><br><span class="line">70</span><br><span class="line">71</span><br><span class="line">72</span><br><span class="line">73</span><br><span class="line">74</span><br><span class="line">75</span><br><span class="line">76</span><br><span class="line">77</span><br><span class="line">78</span><br><span class="line">79</span><br><span class="line">80</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// org.mariadb.r2dbc.MariadbConnectionFactory#doCreateConnection</span></span><br><span class="line"><span class="function"><span class="keyword">private</span> Mono&lt;MariadbConnection&gt; <span class="title">doCreateConnection</span><span class="params">()</span> </span>&#123;</span><br><span class="line"></span><br><span class="line">    Mono&lt;Client&gt; clientMono;</span><br><span class="line">    <span class="keyword">if</span> (configuration.allowPipelining()) &#123;</span><br><span class="line">        clientMono =</span><br><span class="line">            ClientPipelineImpl.connect(</span><br><span class="line">            ConnectionProvider.newConnection(), <span class="keyword">this</span>.endpoint, configuration);</span><br><span class="line">    &#125; <span class="keyword">else</span> &#123;</span><br><span class="line">        clientMono =</span><br><span class="line">            ClientImpl.connect(ConnectionProvider.newConnection(), <span class="keyword">this</span>.endpoint, configuration);</span><br><span class="line">    &#125;</span><br><span class="line"></span><br><span class="line">    <span class="keyword">return</span> clientMono</span><br><span class="line">        .delayUntil(client -&gt; AuthenticationFlow.exchange(client, <span class="keyword">this</span>.configuration)) <span class="comment">// 身份校验</span></span><br><span class="line">        .cast(Client.class)</span><br><span class="line">        .flatMap(</span><br><span class="line">        client -&gt; &#123;</span><br><span class="line">            Mono&lt;Void&gt; waiting = Mono.empty();</span><br><span class="line">            <span class="keyword">if</span> (configuration.getSessionVariables() != <span class="keyword">null</span></span><br><span class="line">                &amp;&amp; configuration.getSessionVariables().size() &gt; <span class="number">0</span>) &#123;</span><br><span class="line">                waiting = setSessionVariables(client);</span><br><span class="line">            &#125;</span><br><span class="line"></span><br><span class="line">            <span class="keyword">if</span> (configuration.getIsolationLevel() == <span class="keyword">null</span>) &#123;</span><br><span class="line"></span><br><span class="line">                <span class="comment">// 获取数据库的隔离等级</span></span><br><span class="line">                Mono&lt;IsolationLevel&gt; isolationLevelMono = waiting.then(getIsolationLevel(client));</span><br><span class="line">                <span class="keyword">return</span> isolationLevelMono</span><br><span class="line">                    .map(it -&gt; <span class="keyword">new</span> MariadbConnection(client, it, configuration))</span><br><span class="line">                    .onErrorResume(throwable -&gt; <span class="keyword">this</span>.closeWithError(client, throwable));</span><br><span class="line">            &#125; <span class="keyword">else</span> &#123;</span><br><span class="line">                <span class="keyword">return</span> waiting</span><br><span class="line">                    .then(</span><br><span class="line">                    Mono.just(</span><br><span class="line">                        <span class="keyword">new</span> MariadbConnection(</span><br><span class="line">                            client, configuration.getIsolationLevel(), configuration)))</span><br><span class="line">                    .onErrorResume(throwable -&gt; <span class="keyword">this</span>.closeWithError(client, throwable));</span><br><span class="line">            &#125;</span><br><span class="line">        &#125;)</span><br><span class="line">        .onErrorMap(<span class="keyword">this</span>::cannotConnect);</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="function"><span class="keyword">private</span> Mono&lt;IsolationLevel&gt; <span class="title">getIsolationLevel</span><span class="params">(Client client)</span> </span>&#123;</span><br><span class="line">    String sql = <span class="string">&quot;SELECT @@tx_isolation&quot;</span>;</span><br><span class="line">    <span class="keyword">if</span> (!client.getVersion().isMariaDBServer()</span><br><span class="line">        &amp;&amp; (client.getVersion().versionGreaterOrEqual(<span class="number">8</span>, <span class="number">0</span>, <span class="number">3</span>)</span><br><span class="line">            || (client.getVersion().getMajorVersion() &lt; <span class="number">8</span></span><br><span class="line">                &amp;&amp; client.getVersion().versionGreaterOrEqual(<span class="number">5</span>, <span class="number">7</span>, <span class="number">20</span>)))) &#123;</span><br><span class="line">        sql = <span class="string">&quot;SELECT @@transaction_isolation&quot;</span>;</span><br><span class="line">    &#125;</span><br><span class="line"></span><br><span class="line">    <span class="keyword">return</span> <span class="keyword">new</span> MariadbSimpleQueryStatement(client, sql)</span><br><span class="line">        .execute()</span><br><span class="line">        .flatMap(</span><br><span class="line">        it -&gt;</span><br><span class="line">        it.map(</span><br><span class="line">            (row, rowMetadata) -&gt; &#123;</span><br><span class="line">                String level = row.get(<span class="number">0</span>, String.class);</span><br><span class="line"></span><br><span class="line">                <span class="keyword">switch</span> (level) &#123;</span><br><span class="line">                    <span class="keyword">case</span> <span class="string">&quot;REPEATABLE-READ&quot;</span>:</span><br><span class="line">                        <span class="keyword">return</span> IsolationLevel.REPEATABLE_READ;</span><br><span class="line"></span><br><span class="line">                    <span class="keyword">case</span> <span class="string">&quot;READ-UNCOMMITTED&quot;</span>:</span><br><span class="line">                        <span class="keyword">return</span> IsolationLevel.READ_UNCOMMITTED;</span><br><span class="line"></span><br><span class="line">                    <span class="keyword">case</span> <span class="string">&quot;READ-COMMITTED&quot;</span>:</span><br><span class="line">                        <span class="keyword">return</span> IsolationLevel.READ_COMMITTED;</span><br><span class="line"></span><br><span class="line">                    <span class="keyword">case</span> <span class="string">&quot;SERIALIZABLE&quot;</span>:</span><br><span class="line">                        <span class="keyword">return</span> IsolationLevel.SERIALIZABLE;</span><br><span class="line"></span><br><span class="line">                    <span class="keyword">default</span>:</span><br><span class="line">                        <span class="keyword">return</span> IsolationLevel.READ_COMMITTED;</span><br><span class="line">                &#125;</span><br><span class="line">            &#125;))</span><br><span class="line">        .defaultIfEmpty(IsolationLevel.READ_COMMITTED)</span><br><span class="line">        .last();</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<h2 id="两种-Client-实现"><a href="#两种-Client-实现" class="headerlink" title="两种 Client 实现"></a>两种 Client 实现</h2><p><code>R2DBC-SPI</code> 使用 <code>io.r2dbc.spi.Connection</code> 接口来抽象出数据库链接，而在 <code>mariadb-connector-r2dbc</code> 中通过 <code>org.mariadb.r2dbc.client.Client</code> 接口定义了客户端与数据库交互的行为。Client 作为 <code>mariadb-connector-r2dbc</code> 中的核心接口，屏蔽了与数据库交互的细节。该项目存在有两种 Clinet 实现，一种是同步的 Client （ClientImpl），另外一种是异步的 Client（ClientPipelineImpl），对于这两种 Clinet 实现，它们一些通用方法可以抽到一个抽象类（ClientBase）中，但具体的链接数据库、发送命令以及其它细节需要在具体的 ClientBase 实现类中进行实现。</p>
+<p>ClientBase 提供一个含参构造函数，该构造器接收一个 Connection 和 MariadbConnectionConfiguration 对象，这里的 Connection 并不是 R2DBC-SPI 中的 Connection，而是 reactor-netty 中的 Connection，可以理解为是一个 Socket 链接，只不过 reactor-netty 对该 Socket 进行增强了，之后与数据库进行交互也是通过该 Connection 来进行。在第 9 行创建了一个 netty 解码器，MariadbPacketDecoder 继承了 ByteToMessageDecoder，在服务端消息的入站时可以对消息进行解码操作。11与12行添加对应的编解码器到该 Connection 中，从而对客户端与服务端消息进行编解码操作。在 20 行，通过 <code>connection.inbound().receive()</code> 来接收服务端消息，之后并未对服务端消息进行任何处理，难道说并不需要对服务端消息进行处理吗？当然不是这样的，这也是 <code>mariadb-connector-r2dbc</code> 设计的精妙之处，它是通过 MariadbPacketDecoder 对服务端消息解码之后，在通过 FluxSink 来进行数据下发，具体的细节这里先不进行展开，此时只需了解 ClientBase 大致的功能即可。</p>
+<figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// org.mariadb.r2dbc.client.ClientBase#ClientBase</span></span><br><span class="line"><span class="function"><span class="keyword">protected</span> <span class="title">ClientBase</span><span class="params">(Connection connection, MariadbConnectionConfiguration configuration)</span> </span>&#123;</span><br><span class="line">    <span class="keyword">this</span>.connection = connection;</span><br><span class="line">    <span class="keyword">this</span>.configuration = configuration;</span><br><span class="line">    <span class="keyword">this</span>.prepareCache =</span><br><span class="line">        <span class="keyword">this</span>.configuration.useServerPrepStmts()</span><br><span class="line">        ? <span class="keyword">new</span> PrepareCache(<span class="keyword">this</span>.configuration.getPrepareCacheSize(), <span class="keyword">this</span>)</span><br><span class="line">        : <span class="keyword">null</span>;</span><br><span class="line">    <span class="keyword">this</span>.mariadbPacketDecoder = <span class="keyword">new</span> MariadbPacketDecoder(responseReceivers, <span class="keyword">this</span>);</span><br><span class="line"></span><br><span class="line">    connection.addHandler(mariadbPacketDecoder);</span><br><span class="line">    connection.addHandler(mariadbPacketEncoder);</span><br><span class="line"></span><br><span class="line">    <span class="keyword">if</span> (logger.isTraceEnabled()) &#123;</span><br><span class="line">        connection.addHandlerFirst(</span><br><span class="line">            LoggingHandler.class.getSimpleName(),</span><br><span class="line">            <span class="keyword">new</span> LoggingHandler(ClientBase.class, LogLevel.TRACE));</span><br><span class="line">    &#125;</span><br><span class="line"></span><br><span class="line">    connection</span><br><span class="line">        .inbound()</span><br><span class="line">        .receive()</span><br><span class="line">        .doOnError(<span class="keyword">this</span>::handleConnectionError)</span><br><span class="line">        .doOnComplete(<span class="keyword">this</span>::closedServlet)</span><br><span class="line">        .then()</span><br><span class="line">        .subscribe();</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>Client 接口提供一个 <code>sendCommand(ClientMessage)</code> 用于发送消息给服务端，并且接收一个 <code>Flux&lt;ServerMessage&gt;</code>，既然有两种不同的 Client 实现，那么 ClientBase 就可以直接实现该方法，然后具体的发送细节交由对应的实现类进行实现。</p>
+<figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// org.mariadb.r2dbc.client.Client#sendCommand(org.mariadb.r2dbc.message.client.ClientMessage)</span></span><br><span class="line"><span class="function">Flux&lt;ServerMessage&gt; <span class="title">sendCommand</span><span class="params">(ClientMessage requests)</span></span>;</span><br></pre></td></tr></table></figure>
+<p>在 <code>Client#sendCommand(ClientMessage)</code> 方法中调用了 <code>sendCommand</code> 重载方法并传入一个解码状态（DecoderState），最后在调用了 <code>sendCommand(ClientMessage message, DecoderState initialState, String sql)</code> 抽象方法，该抽象方法由对应的继承类来进行实现。</p>
+<figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// org.mariadb.r2dbc.client.ClientBase#sendCommand(org.mariadb.r2dbc.message.client.ClientMessage)</span></span><br><span class="line"><span class="function"><span class="keyword">public</span> Flux&lt;ServerMessage&gt; <span class="title">sendCommand</span><span class="params">(ClientMessage message)</span> </span>&#123;</span><br><span class="line">    <span class="keyword">return</span> sendCommand(message, DecoderState.QUERY_RESPONSE);</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="function"><span class="keyword">public</span> Flux&lt;ServerMessage&gt; <span class="title">sendCommand</span><span class="params">(ClientMessage message, DecoderState initialState)</span> </span>&#123;</span><br><span class="line">    <span class="keyword">return</span> sendCommand(message, initialState, <span class="keyword">null</span>);</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="function"><span class="keyword">public</span> <span class="keyword">abstract</span> Flux&lt;ServerMessage&gt; <span class="title">sendCommand</span><span class="params">(</span></span></span><br><span class="line"><span class="function"><span class="params">    ClientMessage message, DecoderState initialState, String sql)</span></span>;</span><br></pre></td></tr></table></figure>
+
+
+<h3 id="ClientImpl"><a href="#ClientImpl" class="headerlink" title="ClientImpl"></a>ClientImpl</h3><p>既然 ClientImpl 是一个同步的 Client，那么我们思考一下“同步”的有什么特征，客户端给服务端消息时，服务端接收到消息需要执行对应的 SQL 语句，那么这个操作时同步进行的，也就是说那个线程处理该链接，语句的执行也就由该线程进行的。针对该特征，那么在 ClientImpl 设计方面可以这样做，当前的语句执行完之后，服务端返回了处理结果，下一条语句才会发送给服务端。此时肯定需要一个容器来存储 SQL 语句，果然与我们猜想一样，在 ClientImpl 中提供了一个 <code>sendingQueue</code> 无界队列用于存储发送的 ClientMessage。</p>
+<p>之后我们深入到具体的发送细节，在 36 行实现了 ClientBase 中那个 sendCommand 抽象方法，41-46 对链接（Connection）状态进行校验，要是该链接关闭了后续的代码就没有必要继续执行了，直接向下游发送一个 R2dbcNonTransientResourceException 元素即可。47 行通过 <code>atomicBoolean.compareAndSet(false, true)</code> 来将  atomicBoolean 设置为 true，目的是为了防止该 Flux 被二次订阅，如果没有该保护措施，该 Flux 不小心被下游二次订阅了那么会重复的将该 SQL 语句发送给服务端执行，从而导致客户端与数据库资源的浪费。设置成功之后加上一把重入锁，用于保证操作的安全性。在 59 行会判断 responseReceivers 队列中是否有元素，如果满足，那么将 sink, initialState, sql 封装成一个 CmdElement 对象添加到 responseReceivers 队列中，之后将 ClientMessage 发送到 服务端（向 Connection 中写入 ClientMessage）。我们前面也说到 ClientImpl 是一个同步的操作，同一时间段只能处理一条语句，而 responseReceivers 队列是用于存储服务端消息处理操作的，如果 responseReceivers  中没有元素那么说明当前数据库链接并未处理 SQL 语句，此时客户端可以将 ClientMessage 发送给数据库执行。要是 responseReceivers  队列中没有元素，看到 53-56 行，同样先将 sink, initialState, sql 封装成一个 CmdElement 添加到 responseReceivers 中，接下来的操作与之前不同，而是将 ClientMessage 添加到发送队列中（sendingQueue）等待当前语句处理完成之后在发送给服务端。</p>
+<p>那么存放在 sendingQueue 队列中 的 ClientMessage ，会在何时发送呢？现在来看到 <code>ClientImpl#sendNext()</code> 方法，在该方法中同样是先加上一把锁，然后从 sendingQueue 队列中取出一条 ClientMessage，要是不为 null，那么写入到 Connection （发送给服务端）中。我们先不要管 sendNext() 会在何时调用，现在只需要对 ClientImpl 特性有个大概的认识即可。</p>
+<blockquote>
+<p><code>sendNext()</code> 是 Client 接口定义的一个方法，具体的细节会在 MariadbPacketDecoder 设计解读中提到</p>
+</blockquote>
+<figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br><span class="line">49</span><br><span class="line">50</span><br><span class="line">51</span><br><span class="line">52</span><br><span class="line">53</span><br><span class="line">54</span><br><span class="line">55</span><br><span class="line">56</span><br><span class="line">57</span><br><span class="line">58</span><br><span class="line">59</span><br><span class="line">60</span><br><span class="line">61</span><br><span class="line">62</span><br><span class="line">63</span><br><span class="line">64</span><br><span class="line">65</span><br><span class="line">66</span><br><span class="line">67</span><br><span class="line">68</span><br><span class="line">69</span><br><span class="line">70</span><br><span class="line">71</span><br><span class="line">72</span><br><span class="line">73</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// org.mariadb.r2dbc.client.ClientImpl</span></span><br><span class="line"><span class="keyword">public</span> <span class="keyword">final</span> <span class="class"><span class="keyword">class</span> <span class="title">ClientImpl</span> <span class="keyword">extends</span> <span class="title">ClientBase</span> </span>&#123;</span><br><span class="line">  <span class="function"><span class="keyword">public</span> <span class="title">ClientImpl</span><span class="params">(Connection connection, MariadbConnectionConfiguration configuration)</span> </span>&#123;</span><br><span class="line">    <span class="keyword">super</span>(connection, configuration);</span><br><span class="line">  &#125;</span><br><span class="line"></span><br><span class="line">  <span class="keyword">protected</span> <span class="keyword">final</span> Queue&lt;ClientMessage&gt; sendingQueue = Queues.&lt;ClientMessage&gt;unbounded().get();</span><br><span class="line"></span><br><span class="line">  <span class="function"><span class="keyword">public</span> <span class="keyword">static</span> Mono&lt;Client&gt; <span class="title">connect</span><span class="params">(</span></span></span><br><span class="line"><span class="function"><span class="params">      ConnectionProvider connectionProvider,</span></span></span><br><span class="line"><span class="function"><span class="params">      SocketAddress socketAddress,</span></span></span><br><span class="line"><span class="function"><span class="params">      MariadbConnectionConfiguration configuration)</span> </span>&#123;</span><br><span class="line"></span><br><span class="line">    TcpClient tcpClient = TcpClient.create(connectionProvider).remoteAddress(() -&gt; socketAddress);</span><br><span class="line">    tcpClient = setSocketOption(configuration, tcpClient);</span><br><span class="line">    <span class="keyword">return</span> tcpClient.connect().flatMap(it -&gt; Mono.just(<span class="keyword">new</span> ClientImpl(it, configuration)));</span><br><span class="line">  &#125;</span><br><span class="line"></span><br><span class="line">  <span class="function"><span class="keyword">public</span> <span class="keyword">void</span> <span class="title">sendCommandWithoutResult</span><span class="params">(ClientMessage message)</span> </span>&#123;</span><br><span class="line">    <span class="keyword">try</span> &#123;</span><br><span class="line">      lock.lock();</span><br><span class="line">      <span class="keyword">if</span> (<span class="keyword">this</span>.responseReceivers.isEmpty()) &#123;</span><br><span class="line">        connection.channel().writeAndFlush(message);</span><br><span class="line">      &#125; <span class="keyword">else</span> &#123;</span><br><span class="line">        sendingQueue.add(message);</span><br><span class="line">      &#125;</span><br><span class="line">    &#125; <span class="keyword">finally</span> &#123;</span><br><span class="line">      lock.unlock();</span><br><span class="line">    &#125;</span><br><span class="line">  &#125;</span><br><span class="line"></span><br><span class="line">  <span class="function"><span class="keyword">public</span> Flux&lt;ServerMessage&gt; <span class="title">sendCommand</span><span class="params">(PreparePacket preparePacket, ExecutePacket executePacket)</span> </span>&#123;</span><br><span class="line">    <span class="keyword">return</span> Flux.error(<span class="keyword">new</span> R2dbcNonTransientResourceException(<span class="string">&quot;Cannot pipeline&quot;</span>));</span><br><span class="line">  &#125;</span><br><span class="line"></span><br><span class="line">  <span class="function"><span class="keyword">public</span> Flux&lt;ServerMessage&gt; <span class="title">sendCommand</span><span class="params">(</span></span></span><br><span class="line"><span class="function"><span class="params">      ClientMessage message, DecoderState initialState, String sql)</span> </span>&#123;</span><br><span class="line">    AtomicBoolean atomicBoolean = <span class="keyword">new</span> AtomicBoolean();</span><br><span class="line">    <span class="keyword">return</span> Flux.create(</span><br><span class="line">        sink -&gt; &#123;</span><br><span class="line">          <span class="keyword">if</span> (!isConnected()) &#123;</span><br><span class="line">            sink.error(</span><br><span class="line">                <span class="keyword">new</span> R2dbcNonTransientResourceException(</span><br><span class="line">                    <span class="string">&quot;Connection is close. Cannot send anything&quot;</span>));</span><br><span class="line">            <span class="keyword">return</span>;</span><br><span class="line">          &#125;</span><br><span class="line">          <span class="keyword">if</span> (atomicBoolean.compareAndSet(<span class="keyword">false</span>, <span class="keyword">true</span>)) &#123;</span><br><span class="line">            <span class="keyword">try</span> &#123;</span><br><span class="line">              lock.lock();</span><br><span class="line">              <span class="keyword">if</span> (<span class="keyword">this</span>.responseReceivers.isEmpty()) &#123;</span><br><span class="line">                <span class="keyword">this</span>.responseReceivers.add(<span class="keyword">new</span> CmdElement(sink, initialState, sql));</span><br><span class="line">                connection.channel().writeAndFlush(message);</span><br><span class="line">              &#125; <span class="keyword">else</span> &#123;</span><br><span class="line">                <span class="keyword">this</span>.responseReceivers.add(<span class="keyword">new</span> CmdElement(sink, initialState, sql));</span><br><span class="line">                sendingQueue.add(message);</span><br><span class="line">              &#125;</span><br><span class="line">            &#125; <span class="keyword">finally</span> &#123;</span><br><span class="line">              lock.unlock();</span><br><span class="line">            &#125;</span><br><span class="line">          &#125;</span><br><span class="line">        &#125;);</span><br><span class="line">  &#125;</span><br><span class="line"></span><br><span class="line">  <span class="function"><span class="keyword">public</span> <span class="keyword">void</span> <span class="title">sendNext</span><span class="params">()</span> </span>&#123;</span><br><span class="line">    lock.lock();</span><br><span class="line">    <span class="keyword">try</span> &#123;</span><br><span class="line">      ClientMessage next = sendingQueue.poll();</span><br><span class="line">      <span class="keyword">if</span> (next != <span class="keyword">null</span>) connection.channel().writeAndFlush(next);</span><br><span class="line">    &#125; <span class="keyword">finally</span> &#123;</span><br><span class="line">      lock.unlock();</span><br><span class="line">    &#125;</span><br><span class="line">  &#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+
+
+
+<h3 id="ClientPipelineImpl"><a href="#ClientPipelineImpl" class="headerlink" title="ClientPipelineImpl"></a>ClientPipelineImpl</h3><p>ClientPipelineImpl 做为一个异步的 Client，此时我们在思考一下异步的特征。数据库接收到客户端消息时，会将该查询语句交由其它线程进行（线程池某个线程）处理，此时处理链接的线程就可以去接收该客户端发送的其它消息了，之后只需将处理结果按照客户端发送顺序返回给客户端就行了。</p>
+<p>废话不多说，我们先来看到 <code>ClientPipelineImpl#sendCommand(ClientMessage message, DecoderState initialState, String sql)</code> 方法，该方法一些操作上与 <code>ClientImpl#sendCommand</code> 相同，在39-44行这里有点不同，此时先封装 CmdElement 添加到 responseReceivers 中，由于 Client 是一个异步处理的客户端，之后直接将 ClientMessage 发送给服务端。在 ClientPipelineImpl 并未向 ClientImpl 一样使用 sendingQueue 存储 ClientMessage（客户端消息），而且该 sendNext 方法也未有任何操作。</p>
+<figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br><span class="line">49</span><br><span class="line">50</span><br><span class="line">51</span><br><span class="line">52</span><br><span class="line">53</span><br><span class="line">54</span><br><span class="line">55</span><br><span class="line">56</span><br><span class="line">57</span><br><span class="line">58</span><br><span class="line">59</span><br><span class="line">60</span><br><span class="line">61</span><br><span class="line">62</span><br><span class="line">63</span><br><span class="line">64</span><br><span class="line">65</span><br><span class="line">66</span><br><span class="line">67</span><br><span class="line">68</span><br><span class="line">69</span><br><span class="line">70</span><br><span class="line">71</span><br><span class="line">72</span><br><span class="line">73</span><br><span class="line">74</span><br><span class="line">75</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// org.mariadb.r2dbc.client.ClientPipelineImpl</span></span><br><span class="line"><span class="keyword">public</span> <span class="keyword">final</span> <span class="class"><span class="keyword">class</span> <span class="title">ClientPipelineImpl</span> <span class="keyword">extends</span> <span class="title">ClientBase</span> </span>&#123;</span><br><span class="line">  <span class="function"><span class="keyword">public</span> <span class="title">ClientPipelineImpl</span><span class="params">(Connection connection, MariadbConnectionConfiguration configuration)</span> </span>&#123;</span><br><span class="line">    <span class="keyword">super</span>(connection, configuration);</span><br><span class="line">  &#125;</span><br><span class="line"></span><br><span class="line">  <span class="function"><span class="keyword">public</span> <span class="keyword">static</span> Mono&lt;Client&gt; <span class="title">connect</span><span class="params">(</span></span></span><br><span class="line"><span class="function"><span class="params">      ConnectionProvider connectionProvider,</span></span></span><br><span class="line"><span class="function"><span class="params">      SocketAddress socketAddress,</span></span></span><br><span class="line"><span class="function"><span class="params">      MariadbConnectionConfiguration configuration)</span> </span>&#123;</span><br><span class="line"></span><br><span class="line">    TcpClient tcpClient = TcpClient.create(connectionProvider).remoteAddress(() -&gt; socketAddress);</span><br><span class="line">    tcpClient = setSocketOption(configuration, tcpClient);</span><br><span class="line">    <span class="keyword">return</span> tcpClient.connect().flatMap(it -&gt; Mono.just(<span class="keyword">new</span> ClientPipelineImpl(it, configuration)));</span><br><span class="line">  &#125;</span><br><span class="line"></span><br><span class="line">  <span class="function"><span class="keyword">public</span> <span class="keyword">void</span> <span class="title">sendCommandWithoutResult</span><span class="params">(ClientMessage message)</span> </span>&#123;</span><br><span class="line">    <span class="keyword">try</span> &#123;</span><br><span class="line">      lock.lock();</span><br><span class="line">      connection.channel().writeAndFlush(message);</span><br><span class="line">    &#125; <span class="keyword">finally</span> &#123;</span><br><span class="line">      lock.unlock();</span><br><span class="line">    &#125;</span><br><span class="line">  &#125;</span><br><span class="line"></span><br><span class="line">  <span class="function"><span class="keyword">public</span> Flux&lt;ServerMessage&gt; <span class="title">sendCommand</span><span class="params">(PreparePacket preparePacket, ExecutePacket executePacket)</span> </span>&#123;</span><br><span class="line">    AtomicBoolean atomicBoolean = <span class="keyword">new</span> AtomicBoolean();</span><br><span class="line">    <span class="keyword">return</span> Flux.create(</span><br><span class="line">        sink -&gt; &#123;</span><br><span class="line">          <span class="keyword">if</span> (!isConnected()) &#123;</span><br><span class="line">            sink.error(</span><br><span class="line">                <span class="keyword">new</span> R2dbcNonTransientResourceException(</span><br><span class="line">                    <span class="string">&quot;Connection is close. Cannot send anything&quot;</span>));</span><br><span class="line">            <span class="keyword">return</span>;</span><br><span class="line">          &#125;</span><br><span class="line">          <span class="keyword">if</span> (atomicBoolean.compareAndSet(<span class="keyword">false</span>, <span class="keyword">true</span>)) &#123;</span><br><span class="line">            <span class="keyword">try</span> &#123;</span><br><span class="line">              lock.lock();</span><br><span class="line">              <span class="keyword">this</span>.responseReceivers.add(</span><br><span class="line">                  <span class="keyword">new</span> CmdElement(</span><br><span class="line">                      sink, DecoderState.PREPARE_AND_EXECUTE_RESPONSE, preparePacket.getSql()));</span><br><span class="line">              connection.channel().writeAndFlush(preparePacket);</span><br><span class="line">              connection.channel().writeAndFlush(executePacket);</span><br><span class="line">            &#125; <span class="keyword">finally</span> &#123;</span><br><span class="line">              lock.unlock();</span><br><span class="line">            &#125;</span><br><span class="line">          &#125;</span><br><span class="line">        &#125;);</span><br><span class="line">  &#125;</span><br><span class="line"></span><br><span class="line">  <span class="function"><span class="keyword">public</span> Flux&lt;ServerMessage&gt; <span class="title">sendCommand</span><span class="params">(</span></span></span><br><span class="line"><span class="function"><span class="params">      ClientMessage message, DecoderState initialState, String sql)</span> </span>&#123;</span><br><span class="line">    AtomicBoolean atomicBoolean = <span class="keyword">new</span> AtomicBoolean();</span><br><span class="line">    <span class="keyword">return</span> Flux.create(</span><br><span class="line">        sink -&gt; &#123;</span><br><span class="line">          <span class="keyword">if</span> (!isConnected()) &#123;</span><br><span class="line">            sink.error(</span><br><span class="line">                <span class="keyword">new</span> R2dbcNonTransientResourceException(</span><br><span class="line">                    <span class="string">&quot;Connection is close. Cannot send anything&quot;</span>));</span><br><span class="line">            <span class="keyword">return</span>;</span><br><span class="line">          &#125;</span><br><span class="line">          <span class="keyword">if</span> (atomicBoolean.compareAndSet(<span class="keyword">false</span>, <span class="keyword">true</span>)) &#123;</span><br><span class="line">            <span class="keyword">try</span> &#123;</span><br><span class="line">              lock.lock();</span><br><span class="line">              <span class="keyword">this</span>.responseReceivers.add(<span class="keyword">new</span> CmdElement(sink, initialState, sql));</span><br><span class="line">              connection.channel().writeAndFlush(message);</span><br><span class="line">            &#125; <span class="keyword">finally</span> &#123;</span><br><span class="line">              lock.unlock();</span><br><span class="line">            &#125;</span><br><span class="line">          &#125;</span><br><span class="line">        &#125;);</span><br><span class="line">  &#125;</span><br><span class="line"></span><br><span class="line">  <span class="function"><span class="keyword">public</span> <span class="keyword">void</span> <span class="title">sendNext</span><span class="params">()</span> </span>&#123;&#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+
+<h2 id="编解码器解读"><a href="#编解码器解读" class="headerlink" title="编解码器解读"></a>编解码器解读</h2><p>在 netty 中，需要对消息进行一个编解码操作，对于入站消息会进行解码操作，而出站消息会进行编码操作。这些操作都要通过特定的编解码 API 来进行实现，我们在上层都是通过一个对象来充当一个特定的消息，比如说通过 <code>connection.channel().writeAndFlush(ClientMessage)</code> 方法来将 ClientMessage 发送给服务端，因为 Netty 底层都是通过二进制来进行传输的，所以需要一个编码器（MariadbPacketEncoder）来将 ClientMessage 编码成一个 ByteBuf，之后 netty 在转换成 Java NIO 中的 ByteBuffer 发送给服务端。对于入站消息也是一样的，前面我们也提到使用 ServerMessage 来作为服务端消息，那么从一个二进制数据（ByteBuf）转换成 ServerMessage 需要通过一个解码器（MariadbPacketDecoder ）来进行实现。</p>
+<h3 id="MariadbPacketEncoder"><a href="#MariadbPacketEncoder" class="headerlink" title="MariadbPacketEncoder"></a>MariadbPacketEncoder</h3><p>MariadbPacketEncoder 实现也很简单，我们来看到它的 encode 方法，该方法接收三个参数，分别是 ChannelHandlerContext、ClientMessage、ByteBuf，我们通过对 ClientMessage 进行编码操作之后将编码结果写入到 out （ByteBuf out）中。在 11 行中通过一个 ClientMessage#encode 方法先对消息进行一个编码操作，不同的 ClientMessage 它的编码操作是不同的，具体的细节需要看 ClientMessage#encode 方法实现。编码完成之后，得到一个 ByteBuf 对象，然后对单个与多个 mysql packet 进行处理，对于多个 mysql packet 会进行分割。</p>
+<p>大概流程就是这样，最后还有一个小细节，在 40 行会对 buf 进行一个释放的操作，因为我们的 buf 已经写入到了 out 中，那么就不需要该 buf 了。不少人在编写代码时都会忘记释放不需要的 ByteBuf，这并不是一个好的习惯，及时释放不需要资源的可以提高系统资源的利用率。</p>
+<figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// org.mariadb.r2dbc.client.MariadbPacketEncoder</span></span><br><span class="line"><span class="keyword">public</span> <span class="class"><span class="keyword">class</span> <span class="title">MariadbPacketEncoder</span> <span class="keyword">extends</span> <span class="title">MessageToByteEncoder</span>&lt;<span class="title">ClientMessage</span>&gt; </span>&#123;</span><br><span class="line">  <span class="keyword">private</span> Context context = <span class="keyword">null</span>;</span><br><span class="line"></span><br><span class="line">  <span class="meta">@Override</span></span><br><span class="line">  <span class="function"><span class="keyword">protected</span> <span class="keyword">void</span> <span class="title">encode</span><span class="params">(ChannelHandlerContext ctx, ClientMessage msg, ByteBuf out)</span></span></span><br><span class="line"><span class="function">      <span class="keyword">throws</span> Exception </span>&#123;</span><br><span class="line"></span><br><span class="line">    ByteBuf buf = <span class="keyword">null</span>;</span><br><span class="line">    <span class="keyword">try</span> &#123;</span><br><span class="line">      buf = msg.encode(<span class="keyword">this</span>.context, ctx.alloc());</span><br><span class="line"></span><br><span class="line">      <span class="comment">// single mysql packet</span></span><br><span class="line">      <span class="keyword">if</span> (buf.writerIndex() - buf.readerIndex() &lt; <span class="number">0xffffff</span>) &#123;</span><br><span class="line">        out.writeMediumLE(buf.writerIndex() - buf.readerIndex());</span><br><span class="line">        out.writeByte(msg.getSequencer().next());</span><br><span class="line">        out.writeBytes(buf);</span><br><span class="line">        <span class="comment">//        buf.release();</span></span><br><span class="line">        <span class="keyword">return</span>;</span><br><span class="line">      &#125;</span><br><span class="line"></span><br><span class="line">      <span class="comment">// multiple mysql packet - split in 16mb packet</span></span><br><span class="line">      <span class="keyword">int</span> readerIndex = buf.readerIndex();</span><br><span class="line">      <span class="keyword">int</span> packetLength = -<span class="number">1</span>;</span><br><span class="line">      <span class="keyword">while</span> (readerIndex &lt; buf.writerIndex()) &#123;</span><br><span class="line">        packetLength = Math.min(<span class="number">0xffffff</span>, buf.writerIndex() - readerIndex);</span><br><span class="line">        out.writeMediumLE(packetLength);</span><br><span class="line">        out.writeByte(msg.getSequencer().next());</span><br><span class="line">        out.writeBytes(buf.slice(readerIndex, packetLength));</span><br><span class="line">        readerIndex += packetLength;</span><br><span class="line">      &#125;</span><br><span class="line"></span><br><span class="line">      <span class="keyword">if</span> (packetLength == <span class="number">0xffffff</span>) &#123;</span><br><span class="line">        <span class="comment">// in case last packet is full, sending an empty packet to indicate that command is complete</span></span><br><span class="line">        out.writeMediumLE(packetLength);</span><br><span class="line">        out.writeByte(msg.getSequencer().next());</span><br><span class="line">      &#125;</span><br><span class="line"></span><br><span class="line">    &#125; <span class="keyword">finally</span> &#123;</span><br><span class="line">      <span class="keyword">if</span> (buf != <span class="keyword">null</span>) buf.release();</span><br><span class="line">    &#125;</span><br><span class="line">  &#125;</span><br><span class="line"></span><br><span class="line">  <span class="function"><span class="keyword">public</span> <span class="keyword">void</span> <span class="title">setContext</span><span class="params">(Context context)</span> </span>&#123;</span><br><span class="line">    <span class="keyword">this</span>.context = context;</span><br><span class="line">  &#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+
+<h3 id="MariadbPacketDecoder"><a href="#MariadbPacketDecoder" class="headerlink" title="MariadbPacketDecoder"></a>MariadbPacketDecoder</h3><p>MariadbPacketDecoder  作为 netty 入站消息解码器和 <code>mariadb-connector-r2dbc</code> 服务端消息的处理器，同时这也是该项目中最核心的组件之一。先来看到 MariadbPacketDecoder  构造器，接收一个 <code>Queue&lt;CmdElement&gt;</code> 和 <code>Client</code> 作为构造器参数，前者是用于处理服务端消息（通过 CmdElement 中的 Flinksink 下发消息到对应的 Flux 中），后者只是用来将 MariadbPacketDecoder  和Client 进行一个绑定。</p>
+<p>既然该对象是 netty 入站消息解码器，那么我们重点关注它的 decode 方法，在该方法中首先对服务端的二进制数据进行解析，解析的过程我们不必过多的关注，我们重点放在 <code>handleBuffer(ByteBuf packet, Sequencer sequencer)</code> 方法中，方法的参数 packet 是解析好后的服务端消息包。既然是服务端消息，那么肯定需要根据它的消息类型来选择对应的解码器进行解码操作，在 69 行获取该服务端消息类型的解码器，之后调用它的解码器得到一个 ServerMessage 对象，最后通过 CmdElement 中的 FluxSink 来将 ServerMessage 进行下发。如果当前的 ServerMessage 是一个结束的标志（76行），那就认为我们当前的 SQL 语句处理完成了，之后就需要加载下一个 CmdElement 对象。如80行所示，会调用 loadNextResponse() 来从 responseReceivers 队列中加载下一个 CmdElement，之后再把原来的 CmdElement 中的 FluxSink 设置成下发元素完毕（FluxSink#complete()），使得下游停止接收元素（意味着这个操作已经完成了）。最后重点来了，我们前面也在 ClientImpl 与 ClientPipelineImpl 章节提到 sendNext() 方法，此时在 83 行会调用该 sendNext() 方法，该方法作为一个扩展点目的是为了兼容不同Client实现的特性 ，倘若当前的 Client 是  ClientImpl，那么就会发送下一条消息给服务端。</p>
+<figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br><span class="line">49</span><br><span class="line">50</span><br><span class="line">51</span><br><span class="line">52</span><br><span class="line">53</span><br><span class="line">54</span><br><span class="line">55</span><br><span class="line">56</span><br><span class="line">57</span><br><span class="line">58</span><br><span class="line">59</span><br><span class="line">60</span><br><span class="line">61</span><br><span class="line">62</span><br><span class="line">63</span><br><span class="line">64</span><br><span class="line">65</span><br><span class="line">66</span><br><span class="line">67</span><br><span class="line">68</span><br><span class="line">69</span><br><span class="line">70</span><br><span class="line">71</span><br><span class="line">72</span><br><span class="line">73</span><br><span class="line">74</span><br><span class="line">75</span><br><span class="line">76</span><br><span class="line">77</span><br><span class="line">78</span><br><span class="line">79</span><br><span class="line">80</span><br><span class="line">81</span><br><span class="line">82</span><br><span class="line">83</span><br><span class="line">84</span><br><span class="line">85</span><br><span class="line">86</span><br><span class="line">87</span><br><span class="line">88</span><br><span class="line">89</span><br><span class="line">90</span><br><span class="line">91</span><br><span class="line">92</span><br><span class="line">93</span><br><span class="line">94</span><br><span class="line">95</span><br><span class="line">96</span><br><span class="line">97</span><br><span class="line">98</span><br><span class="line">99</span><br><span class="line">100</span><br><span class="line">101</span><br><span class="line">102</span><br><span class="line">103</span><br><span class="line">104</span><br><span class="line">105</span><br><span class="line">106</span><br><span class="line">107</span><br><span class="line">108</span><br><span class="line">109</span><br><span class="line">110</span><br><span class="line">111</span><br><span class="line">112</span><br><span class="line">113</span><br><span class="line">114</span><br><span class="line">115</span><br><span class="line">116</span><br><span class="line">117</span><br><span class="line">118</span><br><span class="line">119</span><br><span class="line">120</span><br><span class="line">121</span><br><span class="line">122</span><br><span class="line">123</span><br><span class="line">124</span><br><span class="line">125</span><br><span class="line">126</span><br><span class="line">127</span><br><span class="line">128</span><br><span class="line">129</span><br><span class="line">130</span><br><span class="line">131</span><br><span class="line">132</span><br><span class="line">133</span><br><span class="line">134</span><br><span class="line">135</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// org.mariadb.r2dbc.client.MariadbPacketDecoder</span></span><br><span class="line"><span class="keyword">public</span> <span class="class"><span class="keyword">class</span> <span class="title">MariadbPacketDecoder</span> <span class="keyword">extends</span> <span class="title">ByteToMessageDecoder</span> </span>&#123;</span><br><span class="line"></span><br><span class="line">  <span class="keyword">private</span> <span class="keyword">final</span> Queue&lt;CmdElement&gt; responseReceivers;</span><br><span class="line">  <span class="keyword">private</span> <span class="keyword">final</span> Client client;</span><br><span class="line"></span><br><span class="line">  <span class="keyword">private</span> Context context = <span class="keyword">null</span>;</span><br><span class="line">  <span class="keyword">private</span> <span class="keyword">boolean</span> isMultipart = <span class="keyword">false</span>;</span><br><span class="line">  <span class="keyword">private</span> DecoderState state = DecoderState.INIT_HANDSHAKE;</span><br><span class="line">  <span class="keyword">private</span> CmdElement cmdElement;</span><br><span class="line">  <span class="keyword">private</span> CompositeByteBuf multipart;</span><br><span class="line">  <span class="keyword">private</span> <span class="keyword">long</span> serverCapabilities;</span><br><span class="line">  <span class="keyword">private</span> <span class="keyword">int</span> stateCounter = <span class="number">0</span>;</span><br><span class="line"></span><br><span class="line">  <span class="function"><span class="keyword">public</span> <span class="title">MariadbPacketDecoder</span><span class="params">(Queue&lt;CmdElement&gt; responseReceivers, Client client)</span> </span>&#123;</span><br><span class="line">    <span class="keyword">this</span>.responseReceivers = responseReceivers;</span><br><span class="line">    <span class="keyword">this</span>.client = client;</span><br><span class="line">  &#125;</span><br><span class="line"></span><br><span class="line">  <span class="meta">@Override</span></span><br><span class="line">  <span class="function"><span class="keyword">protected</span> <span class="keyword">void</span> <span class="title">decode</span><span class="params">(ChannelHandlerContext ctx, ByteBuf buf, List&lt;Object&gt; out)</span> <span class="keyword">throws</span> Exception </span>&#123;</span><br><span class="line">    <span class="keyword">while</span> (buf.readableBytes() &gt; <span class="number">4</span>) &#123;</span><br><span class="line">      <span class="keyword">int</span> length = buf.getUnsignedMediumLE(buf.readerIndex());</span><br><span class="line"></span><br><span class="line">      <span class="comment">// packet not complete</span></span><br><span class="line">      <span class="keyword">if</span> (buf.readableBytes() &lt; length + <span class="number">4</span>) <span class="keyword">return</span>;</span><br><span class="line"></span><br><span class="line">      <span class="comment">// extract packet</span></span><br><span class="line">      <span class="keyword">if</span> (length == <span class="number">0xffffff</span>) &#123;</span><br><span class="line">        <span class="comment">// multipart packet</span></span><br><span class="line">        <span class="keyword">if</span> (!isMultipart) &#123;</span><br><span class="line">          isMultipart = <span class="keyword">true</span>;</span><br><span class="line">          multipart = buf.alloc().compositeBuffer();</span><br><span class="line">        &#125;</span><br><span class="line">        buf.skipBytes(<span class="number">4</span>); <span class="comment">// skip length + header</span></span><br><span class="line">        multipart.addComponent(<span class="keyword">true</span>, buf.readRetainedSlice(length));</span><br><span class="line">        <span class="keyword">continue</span>;</span><br><span class="line">      &#125;</span><br><span class="line"></span><br><span class="line">      <span class="comment">// wait for complete packet</span></span><br><span class="line">      <span class="keyword">if</span> (isMultipart) &#123;</span><br><span class="line">        <span class="comment">// last part of multipart packet</span></span><br><span class="line">        buf.skipBytes(<span class="number">3</span>); <span class="comment">// skip length</span></span><br><span class="line">        Sequencer sequencer = <span class="keyword">new</span> Sequencer(buf.readByte());</span><br><span class="line">        multipart.addComponent(<span class="keyword">true</span>, buf.readRetainedSlice(length));</span><br><span class="line"></span><br><span class="line">        handleBuffer(multipart, sequencer);</span><br><span class="line"></span><br><span class="line">        multipart.release();</span><br><span class="line">        isMultipart = <span class="keyword">false</span>;</span><br><span class="line">        <span class="keyword">continue</span>;</span><br><span class="line">      &#125;</span><br><span class="line"></span><br><span class="line">      <span class="comment">// create Object from packet</span></span><br><span class="line">      ByteBuf packet = buf.readRetainedSlice(<span class="number">4</span> + length);</span><br><span class="line">      packet.skipBytes(<span class="number">3</span>); <span class="comment">// skip length</span></span><br><span class="line">      Sequencer sequencer = <span class="keyword">new</span> Sequencer(packet.readByte());</span><br><span class="line">      handleBuffer(packet, sequencer);</span><br><span class="line">      packet.release();</span><br><span class="line">    &#125;</span><br><span class="line">  &#125;</span><br><span class="line"></span><br><span class="line">  <span class="function"><span class="keyword">private</span> <span class="keyword">void</span> <span class="title">handleBuffer</span><span class="params">(ByteBuf packet, Sequencer sequencer)</span> </span>&#123;</span><br><span class="line">    <span class="keyword">if</span> (cmdElement == <span class="keyword">null</span> &amp;&amp; !loadNextResponse()) &#123;</span><br><span class="line">      <span class="keyword">throw</span> <span class="keyword">new</span> R2dbcNonTransientResourceException(</span><br><span class="line">          <span class="string">&quot;unexpected message received when no command was send&quot;</span>);</span><br><span class="line">    &#125;</span><br><span class="line"></span><br><span class="line">    state =</span><br><span class="line">        state.decoder(</span><br><span class="line">            packet.getUnsignedByte(packet.readerIndex()),</span><br><span class="line">            packet.readableBytes(),</span><br><span class="line">            serverCapabilities);</span><br><span class="line">    ServerMessage msg = state.decode(packet, sequencer, <span class="keyword">this</span>, cmdElement);</span><br><span class="line">    cmdElement.getSink().next(msg);</span><br><span class="line">    <span class="keyword">if</span> (msg.ending()) &#123;</span><br><span class="line">      <span class="keyword">if</span> (cmdElement != <span class="keyword">null</span>) &#123;</span><br><span class="line">        <span class="comment">// complete executed only after setting next element.</span></span><br><span class="line">        CmdElement element = cmdElement;</span><br><span class="line">        loadNextResponse();</span><br><span class="line">        element.getSink().complete();</span><br><span class="line">      &#125;</span><br><span class="line">      client.sendNext();</span><br><span class="line">    &#125; <span class="keyword">else</span> &#123;</span><br><span class="line">      state = state.next(<span class="keyword">this</span>);</span><br><span class="line">    &#125;</span><br><span class="line">  &#125;</span><br><span class="line"></span><br><span class="line">  <span class="function"><span class="keyword">public</span> <span class="keyword">void</span> <span class="title">connectionError</span><span class="params">(Throwable err)</span> </span>&#123;</span><br><span class="line">    <span class="keyword">if</span> (cmdElement != <span class="keyword">null</span>) &#123;</span><br><span class="line">      cmdElement.getSink().error(err);</span><br><span class="line">      cmdElement = <span class="keyword">null</span>;</span><br><span class="line">      state = <span class="keyword">null</span>;</span><br><span class="line">    &#125;</span><br><span class="line">  &#125;</span><br><span class="line"></span><br><span class="line">  <span class="function"><span class="keyword">public</span> Client <span class="title">getClient</span><span class="params">()</span> </span>&#123;</span><br><span class="line">    <span class="keyword">return</span> client;</span><br><span class="line">  &#125;</span><br><span class="line"></span><br><span class="line">  <span class="function"><span class="keyword">public</span> Context <span class="title">getContext</span><span class="params">()</span> </span>&#123;</span><br><span class="line">    <span class="keyword">return</span> context;</span><br><span class="line">  &#125;</span><br><span class="line"></span><br><span class="line">  <span class="function"><span class="keyword">public</span> <span class="keyword">int</span> <span class="title">getStateCounter</span><span class="params">()</span> </span>&#123;</span><br><span class="line">    <span class="keyword">return</span> stateCounter;</span><br><span class="line">  &#125;</span><br><span class="line"></span><br><span class="line">  <span class="function"><span class="keyword">public</span> <span class="keyword">void</span> <span class="title">setStateCounter</span><span class="params">(<span class="keyword">int</span> counter)</span> </span>&#123;</span><br><span class="line">    stateCounter = counter;</span><br><span class="line">  &#125;</span><br><span class="line"></span><br><span class="line">  <span class="function"><span class="keyword">public</span> <span class="keyword">void</span> <span class="title">decrementStateCounter</span><span class="params">()</span> </span>&#123;</span><br><span class="line">    stateCounter--;</span><br><span class="line">  &#125;</span><br><span class="line"></span><br><span class="line">  <span class="function"><span class="keyword">public</span> <span class="keyword">long</span> <span class="title">getServerCapabilities</span><span class="params">()</span> </span>&#123;</span><br><span class="line">    <span class="keyword">return</span> serverCapabilities;</span><br><span class="line">  &#125;</span><br><span class="line"></span><br><span class="line">  <span class="function"><span class="keyword">private</span> <span class="keyword">boolean</span> <span class="title">loadNextResponse</span><span class="params">()</span> </span>&#123;</span><br><span class="line">    <span class="keyword">this</span>.cmdElement = responseReceivers.poll();</span><br><span class="line">    <span class="keyword">if</span> (cmdElement != <span class="keyword">null</span>) &#123;</span><br><span class="line">      state = cmdElement.getInitialState();</span><br><span class="line">      <span class="keyword">return</span> <span class="keyword">true</span>;</span><br><span class="line">    &#125;</span><br><span class="line">    state = <span class="keyword">null</span>;</span><br><span class="line">    <span class="keyword">return</span> <span class="keyword">false</span>;</span><br><span class="line">  &#125;</span><br><span class="line"></span><br><span class="line">  <span class="function"><span class="keyword">public</span> <span class="keyword">void</span> <span class="title">setContext</span><span class="params">(Context context)</span> </span>&#123;</span><br><span class="line">    <span class="keyword">this</span>.context = context;</span><br><span class="line">    <span class="keyword">this</span>.serverCapabilities = <span class="keyword">this</span>.context.getServerCapabilities();</span><br><span class="line">  &#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+
+<h2 id="结束语"><a href="#结束语" class="headerlink" title="结束语"></a>结束语</h2><p>本文并未对消息的编解码操作进行深入探究，只是对 <code>mariadb-connector-r2dbc</code> 设计进行一个大概的描述，对于具体的实现细节还请读者自行探究。通过这个项目我们可以学习到很多东西，如何将 reactor-netty 落地到项目中，响应式基础库该如何进行设计以及作者一些优秀的设计思路。</p>
+
+    </div>
+
+    
+    
+    
+
+      <footer class="post-footer">
+          <div class="post-tags">
+              <a href="/tags/Reactor/" <i class="fa fa-tag"></i>Reactor</a>
+              <a href="/tags/MySQL/" <i class="fa fa-tag"></i>MySQL</a>
+              <a href="/tags/MariaDB/" <i class="fa fa-tag"></i>MariaDB</a>
+              <a href="/tags/Reactor-Netty/" <i class="fa fa-tag"></i>Reactor-Netty</a>
+              <a href="/tags/R2DBC/" <i class="fa fa-tag"></i>R2DBC</a>
+          </div>
+
+        
+
+
+        
+    <div class="post-nav">
+      <div class="post-nav-item">
+    <a href="/2021/03/09/%E6%95%B0%E6%8D%AE%E5%BA%93%E9%A9%B1%E5%8A%A8%E5%A6%82%E4%BD%95%E5%AF%B9%E6%8E%A5%E5%88%B0-JDBC/" rel="prev" title="数据库驱动如何对接到 JDBC">
+      <i class="fa fa-chevron-left"></i> 数据库驱动如何对接到 JDBC
+    </a></div>
+      <div class="post-nav-item">
+    <a href="/2021/06/09/Rust%20%E5%AD%A6%E4%B9%A0%E7%AC%94%E8%AE%B0%EF%BC%9A%E7%AC%AC1%E7%AB%A0-Rust-%E7%AE%80%E4%BB%8B/" rel="next" title="Rust 学习笔记：第1章 Rust 简介">
+      Rust 学习笔记：第1章 Rust 简介 <i class="fa fa-chevron-right"></i>
+    </a></div>
+    </div>
+      </footer>
+    
+  </article>
+  
+  
+  
+
+
+
+          </div>
+          
+
+<script>
+  window.addEventListener('tabs:register', () => {
+    let { activeClass } = CONFIG.comments;
+    if (CONFIG.comments.storage) {
+      activeClass = localStorage.getItem('comments_active') || activeClass;
+    }
+    if (activeClass) {
+      let activeTab = document.querySelector(`a[href="#comment-${activeClass}"]`);
+      if (activeTab) {
+        activeTab.click();
+      }
+    }
+  });
+  if (CONFIG.comments.storage) {
+    window.addEventListener('tabs:click', event => {
+      if (!event.target.matches('.tabs-comment .tab-content .tab-pane')) return;
+      let commentClass = event.target.classList[1];
+      localStorage.setItem('comments_active', commentClass);
+    });
+  }
+</script>
+
+        </div>
+          
+  
+  <div class="toggle sidebar-toggle">
+    <span class="toggle-line toggle-line-first"></span>
+    <span class="toggle-line toggle-line-middle"></span>
+    <span class="toggle-line toggle-line-last"></span>
+  </div>
+
+  <aside class="sidebar">
+    <div class="sidebar-inner">
+
+      <ul class="sidebar-nav motion-element">
+        <li class="sidebar-nav-toc">
+          文章目录
+        </li>
+        <li class="sidebar-nav-overview">
+          站点概览
+        </li>
+      </ul>
+
+      <!--noindex-->
+      <div class="post-toc-wrap sidebar-panel">
+          <div class="post-toc motion-element"><ol class="nav"><li class="nav-item nav-level-2"><a class="nav-link" href="#%E4%BB%80%E4%B9%88%E6%98%AF-R2DBC-SPI"><span class="nav-number">1.</span> <span class="nav-text">什么是 R2DBC-SPI</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#mariadb-connector-r2dbc-%E7%AE%80%E4%BB%8B"><span class="nav-number">2.</span> <span class="nav-text">mariadb-connector-r2dbc 简介</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E5%AE%A2%E6%88%B7%E7%AB%AF%E4%B8%8E%E6%9C%8D%E5%8A%A1%E7%AB%AF%E6%B6%88%E6%81%AF%E5%8D%8F%E8%AE%AE"><span class="nav-number">3.</span> <span class="nav-text">客户端与服务端消息协议</span></a><ol class="nav-child"><li class="nav-item nav-level-3"><a class="nav-link" href="#ClientMessage"><span class="nav-number">3.1.</span> <span class="nav-text">ClientMessage</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#ServerMessage"><span class="nav-number">3.2.</span> <span class="nav-text">ServerMessage</span></a></li></ol></li><li class="nav-item nav-level-2"><a class="nav-link" href="#MariadbConnectionFactory-%E6%BA%90%E7%A0%81%E8%A7%A3%E8%AF%BB"><span class="nav-number">4.</span> <span class="nav-text">MariadbConnectionFactory 源码解读</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E4%B8%A4%E7%A7%8D-Client-%E5%AE%9E%E7%8E%B0"><span class="nav-number">5.</span> <span class="nav-text">两种 Client 实现</span></a><ol class="nav-child"><li class="nav-item nav-level-3"><a class="nav-link" href="#ClientImpl"><span class="nav-number">5.1.</span> <span class="nav-text">ClientImpl</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#ClientPipelineImpl"><span class="nav-number">5.2.</span> <span class="nav-text">ClientPipelineImpl</span></a></li></ol></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E7%BC%96%E8%A7%A3%E7%A0%81%E5%99%A8%E8%A7%A3%E8%AF%BB"><span class="nav-number">6.</span> <span class="nav-text">编解码器解读</span></a><ol class="nav-child"><li class="nav-item nav-level-3"><a class="nav-link" href="#MariadbPacketEncoder"><span class="nav-number">6.1.</span> <span class="nav-text">MariadbPacketEncoder</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#MariadbPacketDecoder"><span class="nav-number">6.2.</span> <span class="nav-text">MariadbPacketDecoder</span></a></li></ol></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E7%BB%93%E6%9D%9F%E8%AF%AD"><span class="nav-number">7.</span> <span class="nav-text">结束语</span></a></li></ol></div>
+      </div>
+      <!--/noindex-->
+
+      <div class="site-overview-wrap sidebar-panel">
+        <div class="site-author motion-element" itemprop="author" itemscope itemtype="http://schema.org/Person">
+    <img class="site-author-image" itemprop="image" alt="predicate"
+      src="/images/avatar.jpg">
+  <p class="site-author-name" itemprop="name">predicate</p>
+  <div class="site-description" itemprop="description">因为热爱，所以坚持。</div>
+</div>
+<div class="site-state-wrap motion-element">
+  <nav class="site-state">
+      <div class="site-state-item site-state-posts">
+          <a href="/archives/">
+        
+          <span class="site-state-item-count">21</span>
+          <span class="site-state-item-name">日志</span>
+        </a>
+      </div>
+      <div class="site-state-item site-state-categories">
+            <a href="/categories/">
+          
+        <span class="site-state-item-count">13</span>
+        <span class="site-state-item-name">分类</span></a>
+      </div>
+      <div class="site-state-item site-state-tags">
+            <a href="/tags/">
+          
+        <span class="site-state-item-count">27</span>
+        <span class="site-state-item-name">标签</span></a>
+      </div>
+  </nav>
+</div>
+  <div class="links-of-author motion-element">
+      <span class="links-of-author-item">
+        <a href="https://github.com/killlowkey" title="GitHub → https:&#x2F;&#x2F;github.com&#x2F;killlowkey" rel="noopener" target="_blank"><i class="fa fa-fw fa-github"></i>GitHub</a>
+      </span>
+  </div>
+
+
+
+      </div>
+
+    </div>
+  </aside>
+  <div id="sidebar-dimmer"></div>
+
+
+      </div>
+    </main>
+
+    <footer class="footer">
+      <div class="footer-inner">
+        
+
+        
+
+<div class="copyright">
+  
+  &copy; 
+  <span itemprop="copyrightYear">2022</span>
+  <span class="with-love">
+    <i class="fa fa-user"></i>
+  </span>
+  <span class="author" itemprop="copyrightHolder">predicate</span>
+</div>
+  <div class="powered-by">由 <a href="https://hexo.io/" class="theme-link" rel="noopener" target="_blank">Hexo</a> & <a href="https://theme-next.org/" class="theme-link" rel="noopener" target="_blank">NexT.Gemini</a> 强力驱动
+  </div>
+
+        
+
+
+
+
+
+
+
+
+      </div>
+    </footer>
+  </div>
+
+  
+  <script src="/lib/anime.min.js"></script>
+  <script src="/lib/velocity/velocity.min.js"></script>
+  <script src="/lib/velocity/velocity.ui.min.js"></script>
+
+<script src="/js/utils.js"></script>
+
+<script src="/js/motion.js"></script>
+
+
+<script src="/js/schemes/pisces.js"></script>
+
+
+<script src="/js/next-boot.js"></script>
+
+
+
+
+  
+
+
+
+
+  
+<script src="/js/local-search.js"></script>
+
+
+
+
+
+
+
+
+
+
+
+
+
+  
+
+  
+
+</body>
+</html>

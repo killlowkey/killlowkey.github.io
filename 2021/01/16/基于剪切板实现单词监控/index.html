@@ -1,0 +1,473 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=2">
+<meta name="theme-color" content="#222">
+<meta name="generator" content="Hexo 5.3.0">
+  <link rel="apple-touch-icon" sizes="180x180" href="/images/apple-touch-icon-next.png">
+  <link rel="icon" type="image/png" sizes="32x32" href="/images/favicon-32x32-next.png">
+  <link rel="icon" type="image/png" sizes="16x16" href="/images/favicon-16x16-next.png">
+  <link rel="mask-icon" href="/images/logo.svg" color="#222">
+
+<link rel="stylesheet" href="/css/main.css">
+
+
+<link rel="stylesheet" href="/lib/font-awesome/css/font-awesome.min.css">
+
+<script id="hexo-configurations">
+    var NexT = window.NexT || {};
+    var CONFIG = {"hostname":"example.com","root":"/","scheme":"Gemini","version":"7.8.0","exturl":false,"sidebar":{"position":"left","display":"post","padding":18,"offset":12,"onmobile":false},"copycode":{"enable":false,"show_result":false,"style":null},"back2top":{"enable":true,"sidebar":false,"scrollpercent":false},"bookmark":{"enable":false,"color":"#222","save":"auto"},"fancybox":false,"mediumzoom":false,"lazyload":false,"pangu":false,"comments":{"style":"tabs","active":null,"storage":true,"lazyload":false,"nav":null},"algolia":{"hits":{"per_page":10},"labels":{"input_placeholder":"Search for Posts","hits_empty":"We didn't find any results for the search: ${query}","hits_stats":"${hits} results found in ${time} ms"}},"localsearch":{"enable":true,"trigger":"auto","top_n_per_article":1,"unescape":false,"preload":false},"motion":{"enable":true,"async":false,"transition":{"post_block":"fadeIn","post_header":"slideDownIn","post_body":"slideDownIn","coll_header":"slideLeftIn","sidebar":"slideUpIn"}},"path":"search.xml"};
+  </script>
+
+  <meta name="description" content="github 地址：https:&#x2F;&#x2F;github.com&#x2F;killlowkey&#x2F;olu-word  最近看英文文档比较多，因为在这过程中遇到的生词比较多嘛，所以需要将这些生词添加到生词本中，以便于复习。偶然在 ipad 上看到了欧路词典，使用下来各方面体验都还不错。然而在 pc 上，找了一圈没有找到欧路词典的浏览器插件，这就使得我很懵逼了。这时刚好看到了欧路词典的官网提供了 API 接口，于是萌">
+<meta property="og:type" content="article">
+<meta property="og:title" content="基于剪切板实现单词监控">
+<meta property="og:url" content="http://example.com/2021/01/16/%E5%9F%BA%E4%BA%8E%E5%89%AA%E5%88%87%E6%9D%BF%E5%AE%9E%E7%8E%B0%E5%8D%95%E8%AF%8D%E7%9B%91%E6%8E%A7/index.html">
+<meta property="og:site_name" content="predicate | blog">
+<meta property="og:description" content="github 地址：https:&#x2F;&#x2F;github.com&#x2F;killlowkey&#x2F;olu-word  最近看英文文档比较多，因为在这过程中遇到的生词比较多嘛，所以需要将这些生词添加到生词本中，以便于复习。偶然在 ipad 上看到了欧路词典，使用下来各方面体验都还不错。然而在 pc 上，找了一圈没有找到欧路词典的浏览器插件，这就使得我很懵逼了。这时刚好看到了欧路词典的官网提供了 API 接口，于是萌">
+<meta property="og:locale" content="zh_CN">
+<meta property="article:published_time" content="2021-01-16T13:11:00.000Z">
+<meta property="article:modified_time" content="2022-03-24T04:57:14.180Z">
+<meta property="article:author" content="predicate">
+<meta property="article:tag" content="Reactor">
+<meta name="twitter:card" content="summary">
+
+<link rel="canonical" href="http://example.com/2021/01/16/%E5%9F%BA%E4%BA%8E%E5%89%AA%E5%88%87%E6%9D%BF%E5%AE%9E%E7%8E%B0%E5%8D%95%E8%AF%8D%E7%9B%91%E6%8E%A7/">
+
+
+<script id="page-configurations">
+  // https://hexo.io/docs/variables.html
+  CONFIG.page = {
+    sidebar: "",
+    isHome : false,
+    isPost : true,
+    lang   : 'zh-CN'
+  };
+</script>
+
+  <title>基于剪切板实现单词监控 | predicate | blog</title>
+  
+
+
+
+
+
+
+  <noscript>
+  <style>
+  .use-motion .brand,
+  .use-motion .menu-item,
+  .sidebar-inner,
+  .use-motion .post-block,
+  .use-motion .pagination,
+  .use-motion .comments,
+  .use-motion .post-header,
+  .use-motion .post-body,
+  .use-motion .collection-header { opacity: initial; }
+
+  .use-motion .site-title,
+  .use-motion .site-subtitle {
+    opacity: initial;
+    top: initial;
+  }
+
+  .use-motion .logo-line-before i { left: initial; }
+  .use-motion .logo-line-after i { right: initial; }
+  </style>
+</noscript>
+
+</head>
+
+<body itemscope itemtype="http://schema.org/WebPage">
+  <div class="container use-motion">
+    <div class="headband"></div>
+
+    <header class="header" itemscope itemtype="http://schema.org/WPHeader">
+      <div class="header-inner"><div class="site-brand-container">
+  <div class="site-nav-toggle">
+    <div class="toggle" aria-label="切换导航栏">
+      <span class="toggle-line toggle-line-first"></span>
+      <span class="toggle-line toggle-line-middle"></span>
+      <span class="toggle-line toggle-line-last"></span>
+    </div>
+  </div>
+
+  <div class="site-meta">
+
+    <a href="/" class="brand" rel="start">
+      <span class="logo-line-before"><i></i></span>
+      <h1 class="site-title">predicate | blog</h1>
+      <span class="logo-line-after"><i></i></span>
+    </a>
+      <p class="site-subtitle" itemprop="description">你好，世界！</p>
+  </div>
+
+  <div class="site-nav-right">
+    <div class="toggle popup-trigger">
+        <i class="fa fa-search fa-fw fa-lg"></i>
+    </div>
+  </div>
+</div>
+
+
+
+
+<nav class="site-nav">
+  <ul id="menu" class="menu">
+        <li class="menu-item menu-item-home">
+
+    <a href="/" rel="section"><i class="fa fa-fw fa-home"></i>首页</a>
+
+  </li>
+        <li class="menu-item menu-item-categories">
+
+    <a href="/categories/" rel="section"><i class="fa fa-fw fa-th"></i>分类</a>
+
+  </li>
+        <li class="menu-item menu-item-tags">
+
+    <a href="/tags/" rel="section"><i class="fa fa-fw fa-tags"></i>标签</a>
+
+  </li>
+        <li class="menu-item menu-item-archives">
+
+    <a href="/archives/" rel="section"><i class="fa fa-fw fa-archive"></i>归档</a>
+
+  </li>
+      <li class="menu-item menu-item-search">
+        <a role="button" class="popup-trigger"><i class="fa fa-search fa-fw"></i>搜索
+        </a>
+      </li>
+  </ul>
+</nav>
+
+
+
+  <div class="search-pop-overlay">
+    <div class="popup search-popup">
+        <div class="search-header">
+  <span class="search-icon">
+    <i class="fa fa-search"></i>
+  </span>
+  <div class="search-input-container">
+    <input autocomplete="off" autocapitalize="off"
+           placeholder="搜索..." spellcheck="false"
+           type="search" class="search-input">
+  </div>
+  <span class="popup-btn-close">
+    <i class="fa fa-times-circle"></i>
+  </span>
+</div>
+<div id="search-result">
+  <div id="no-result">
+    <i class="fa fa-spinner fa-pulse fa-5x fa-fw"></i>
+  </div>
+</div>
+
+    </div>
+  </div>
+
+</div>
+    </header>
+
+    
+  <div class="back-to-top">
+    <i class="fa fa-arrow-up"></i>
+    <span>0%</span>
+  </div>
+
+
+    <main class="main">
+      <div class="main-inner">
+        <div class="content-wrap">
+          
+
+          <div class="content post posts-expand">
+            
+
+    
+  
+  
+  <article itemscope itemtype="http://schema.org/Article" class="post-block" lang="zh-CN">
+    <link itemprop="mainEntityOfPage" href="http://example.com/2021/01/16/%E5%9F%BA%E4%BA%8E%E5%89%AA%E5%88%87%E6%9D%BF%E5%AE%9E%E7%8E%B0%E5%8D%95%E8%AF%8D%E7%9B%91%E6%8E%A7/">
+
+    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
+      <meta itemprop="image" content="/images/avatar.jpg">
+      <meta itemprop="name" content="predicate">
+      <meta itemprop="description" content="因为热爱，所以坚持。">
+    </span>
+
+    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
+      <meta itemprop="name" content="predicate | blog">
+    </span>
+      <header class="post-header">
+        <h1 class="post-title" itemprop="name headline">
+          基于剪切板实现单词监控
+        </h1>
+
+        <div class="post-meta">
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="fa fa-calendar-o"></i>
+              </span>
+              <span class="post-meta-item-text">发表于</span>
+
+              <time title="创建时间：2021-01-16 21:11:00" itemprop="dateCreated datePublished" datetime="2021-01-16T21:11:00+08:00">2021-01-16</time>
+            </span>
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="fa fa-folder-o"></i>
+              </span>
+              <span class="post-meta-item-text">分类于</span>
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
+                  <a href="/categories/Reactor/" itemprop="url" rel="index"><span itemprop="name">Reactor</span></a>
+                </span>
+            </span>
+
+          
+
+        </div>
+      </header>
+
+    
+    
+    
+    <div class="post-body" itemprop="articleBody">
+
+      
+        <blockquote>
+<p>github 地址：<a target="_blank" rel="noopener" href="https://github.com/killlowkey/olu-word">https://github.com/killlowkey/olu-word</a></p>
+</blockquote>
+<p>最近看英文文档比较多，因为在这过程中遇到的生词比较多嘛，所以需要将这些生词添加到生词本中，以便于复习。偶然在 <code>ipad</code> 上看到了欧路词典，使用下来各方面体验都还不错。然而在 pc 上，找了一圈没有找到欧路词典的浏览器插件，这就使得我很懵逼了。这时刚好看到了欧路词典的官网提供了 API 接口，于是萌发了自己写一个添加生词app想法。</p>
+<a id="more"></a>
+
+<h2 id="需求分析"><a href="#需求分析" class="headerlink" title="需求分析"></a>需求分析</h2><p>我们要实现的功能很简单，就是通过将生词添加到欧路词典的生词本中。刚开始本来想用 spring shell 来实现，写一个基于命令行 app，最后还是放弃了，因为这种实现使用也比较麻烦，每次添加单词时还需要敲一个命令行这不是闲的蛋疼嘛。于是改用监控剪切板进行实现，我们只需要将生词进行复制，之后app监听到剪切板的内容，如果是一个单词那么就添加到生词本中。欧路词典提供 API 中需要在请求添加一个 <code>Authorization</code> 头来进行请求，这时 <code>Authorization</code> 值肯定不能写死在程序中，不然 <code>Authorization</code> 过期了还需要修改代码重新打包，所以需要从外部的配置文件来进行加载。</p>
+<p>基于上述的需求，我们实现的功能大致分为以下三步</p>
+<ol>
+<li>应用启动时从外部配置文件加载 <code>Authorization</code> </li>
+<li>监听剪切板</li>
+<li>上传单词到欧路词典</li>
+</ol>
+<h2 id="配置加载"><a href="#配置加载" class="headerlink" title="配置加载"></a>配置加载</h2><p>应用打包之后时一个 jar 文件，配置要与 jar 文件存放同一目录。首先应用启动时需要获取 jar 文件存放路径，之后加载该路径下的  <code>config.properties</code>，最后从该配置文件中获取 <code>Authorization</code>。</p>
+<p>获取 jar 文件存放路径这里有一个小坑，就是我们得到的路径是这个样子的 <code>/C:/xxx/xxx.jar</code> 的，所以需要对路径来进行处理，我们只需要 <code>/c:/xxx/</code> 。获取路径之后，需要找到路径中最后一个 <code>/</code> 位置，之后通过 <code>String#subString</code> 方法来对路径进行截取。</p>
+<p>代码使用 reactor 来进行编写，所以这里解释一下代码的含义。在 static 代码块中，通过 <code>Mono#just</code> 来下发一个 <code>Properties</code> 实例元素，之后通过 <code>doOnNext</code> 来加载 <code>config.properties</code> ，最后下游进行订阅从 properties 中获取 authorization 。</p>
+<figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">private</span> <span class="keyword">static</span> String authorization;</span><br><span class="line"></span><br><span class="line"><span class="keyword">static</span> &#123;</span><br><span class="line">    Mono.just(<span class="keyword">new</span> Properties())</span><br><span class="line">            .doOnNext(properties -&gt; &#123;</span><br><span class="line">                <span class="keyword">try</span> &#123;</span><br><span class="line">                    properties.load(<span class="keyword">new</span> FileInputStream(getPath() + <span class="string">&quot;config.properties&quot;</span>));</span><br><span class="line">                &#125; <span class="keyword">catch</span> (IOException e) &#123;</span><br><span class="line">                    e.printStackTrace();</span><br><span class="line">                &#125;</span><br><span class="line">            &#125;)</span><br><span class="line">            .subscribe(properties -&gt; authorization = properties.getProperty(<span class="string">&quot;authorization&quot;</span>));</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="function"><span class="keyword">private</span> <span class="keyword">static</span> String <span class="title">getPath</span><span class="params">()</span> </span>&#123;</span><br><span class="line">    String path = OluWordApplication.class.getProtectionDomain().getCodeSource().getLocation().getPath();</span><br><span class="line">    <span class="keyword">int</span> index = <span class="number">0</span>;</span><br><span class="line"></span><br><span class="line">    <span class="keyword">char</span>[] chars = path.toCharArray();</span><br><span class="line">    <span class="keyword">for</span> (<span class="keyword">int</span> i = <span class="number">0</span>; i &lt; chars.length; i++) &#123;</span><br><span class="line">        <span class="keyword">char</span> c = chars[i];</span><br><span class="line">        <span class="keyword">if</span> (c == <span class="string">&#x27;/&#x27;</span> || c == <span class="string">&#x27;\\&#x27;</span>) &#123;</span><br><span class="line">            index = i;</span><br><span class="line">        &#125;</span><br><span class="line">    &#125;</span><br><span class="line"></span><br><span class="line">    <span class="keyword">return</span> path.substring(<span class="number">0</span>, index + <span class="number">1</span>);</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<h2 id="剪切板监听"><a href="#剪切板监听" class="headerlink" title="剪切板监听"></a>剪切板监听</h2><p>加载配置完成之后，需要做的就是监听剪切板。这里我们采用的是定时监听，每200ms就监听一次，在 Reactor 可以通过 <code>Flux#interval</code> 来进行实现，根据传入 Duration 实例然后定时下发元素。每次进行下发时，就从剪切板获取内容。获取之后我们通过正则进行判断（单词开头是小写或大写字母开头，其余都是小写字母，那么判定该文本是单词），如果该文本是单词的话那么就添加到生词本中。</p>
+<p>监听剪切板有这里有一个小坑，假设我复制了一个单词，并且添加到生词本。之后进行监听时还会将这个单词添加到生词本中，这里我们通过 <code>currentWord</code> 来解决这个问题，每次添加单词时就更新 <code>currentWord</code>，如果当前剪切板内容是 <code>currentWord</code>，那么就不需要将该剪切板文本添加到单词本中。</p>
+<figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">private</span> <span class="keyword">static</span> String currentWord = <span class="string">&quot;&quot;</span>;</span><br><span class="line"></span><br><span class="line"><span class="function"><span class="keyword">public</span> <span class="keyword">static</span> <span class="keyword">void</span> <span class="title">main</span><span class="params">(String[] args)</span> <span class="keyword">throws</span> Exception </span>&#123;</span><br><span class="line">    CountDownLatch countDownLatch = <span class="keyword">new</span> CountDownLatch(<span class="number">1</span>);</span><br><span class="line"></span><br><span class="line">    Flux.interval(Duration.ofMillis(<span class="number">200</span>))</span><br><span class="line">        <span class="comment">// 获取剪切板内容</span></span><br><span class="line">        .map(seed -&gt; getSysClipboardText())</span><br><span class="line">        <span class="comment">// 判断该文本是否是单词并且word不等于currentWord</span></span><br><span class="line">        .filter(word -&gt; !word.equals(currentWord) &amp;&amp; word.matches(<span class="string">&quot;[a-zA-Z][a-z]+&quot;</span>))</span><br><span class="line">        <span class="comment">// 添加单词时是 IO 操作所以，采用调度器来进行处理</span></span><br><span class="line">        .publishOn(Schedulers.parallel())</span><br><span class="line">        <span class="comment">// 更新 currentWord</span></span><br><span class="line">        .doOnNext(word -&gt; currentWord = word)</span><br><span class="line">        .doOnSubscribe(subscription -&gt; System.out.println(<span class="string">&quot;欧路词典监控已启动...&quot;</span>))</span><br><span class="line">        .doOnComplete(countDownLatch::countDown)</span><br><span class="line">        <span class="comment">// 添加到生词本</span></span><br><span class="line">        .subscribe(OluWordApplication::submitWord);</span><br><span class="line"></span><br><span class="line">    countDownLatch.await();</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"></span><br><span class="line"><span class="function"><span class="keyword">private</span> <span class="keyword">static</span> String <span class="title">getSysClipboardText</span><span class="params">()</span> </span>&#123;</span><br><span class="line">    String clipboard = ClipboardUtil.getStr();</span><br><span class="line">    <span class="keyword">return</span> clipboard != <span class="keyword">null</span> ? clipboard.trim() : <span class="string">&quot;&quot;</span>;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<h2 id="添加生词"><a href="#添加生词" class="headerlink" title="添加生词"></a>添加生词</h2><p>添加生词这个步骤很简单，就是构建一个 post 请求，然后进行请求就好了。这里还是使用 <code>Mono#just</code> 来进行下发元素，通过 <code>hutool</code> 的 <code>HttpUtil</code> 来创建一个 post 请求，之后在 <code>doOnNext</code> 中添加请求头与请求体。然后在 <code>map</code> 中执行该请求并获取它的响应码，最后下游订阅时响应码是201 说明我们添加成功了，401说明Authorization过期了或者有误。</p>
+<figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">private</span> <span class="keyword">static</span> <span class="keyword">void</span> <span class="title">submitWord</span><span class="params">(String word)</span> </span>&#123;</span><br><span class="line">    Mono.just(HttpUtil.createPost(<span class="string">&quot;https://api.frdic.com/api/open/v1/studylist/words&quot;</span>))</span><br><span class="line">        .doOnNext(request -&gt; request</span><br><span class="line">                  .header(<span class="string">&quot;Authorization&quot;</span>, authorization)</span><br><span class="line">                  .body(String.format(<span class="string">&quot;&#123;\&quot;id\&quot;:\&quot;0\&quot;,\&quot;language\&quot;:\&quot;en\&quot;,\&quot;words\&quot;:[\&quot;%s\&quot;]&#125;&quot;</span>,</span><br><span class="line">                                      word.toLowerCase())))</span><br><span class="line">        .map(request -&gt; request.execute().getStatus())</span><br><span class="line">        .subscribe(status -&gt; &#123;</span><br><span class="line">            <span class="keyword">if</span> (status == <span class="number">201</span>) &#123;</span><br><span class="line">                System.out.println(word.toLowerCase() + <span class="string">&quot;：导入成功&quot;</span>);</span><br><span class="line">            &#125; <span class="keyword">else</span> <span class="keyword">if</span> (status == <span class="number">401</span>) &#123;</span><br><span class="line">                System.out.println(<span class="string">&quot;授权过期，请更新Authorization，并重启应用&quot;</span>);</span><br><span class="line">            &#125;</span><br><span class="line">        &#125;);</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+
+<h2 id="打包与启动"><a href="#打包与启动" class="headerlink" title="打包与启动"></a>打包与启动</h2><p>之后在控制台输入<code>mvn clean package</code> 打包成功 jar 包，最后通过 <code>java -jar xxx.jar</code> 命令启动应用即可。</p>
+
+    </div>
+
+    
+    
+    
+
+      <footer class="post-footer">
+          <div class="post-tags">
+              <a href="/tags/Reactor/" <i class="fa fa-tag"></i>Reactor</a>
+          </div>
+
+        
+
+
+        
+    <div class="post-nav">
+      <div class="post-nav-item">
+    <a href="/2021/01/16/Spring-MVC-%E8%AE%BE%E8%AE%A1%E4%B8%8E%E5%AE%9E%E7%8E%B0/" rel="prev" title="Spring MVC 设计与实现">
+      <i class="fa fa-chevron-left"></i> Spring MVC 设计与实现
+    </a></div>
+      <div class="post-nav-item">
+    <a href="/2021/03/09/%E6%95%B0%E6%8D%AE%E5%BA%93%E9%A9%B1%E5%8A%A8%E5%A6%82%E4%BD%95%E5%AF%B9%E6%8E%A5%E5%88%B0-JDBC/" rel="next" title="数据库驱动如何对接到 JDBC">
+      数据库驱动如何对接到 JDBC <i class="fa fa-chevron-right"></i>
+    </a></div>
+    </div>
+      </footer>
+    
+  </article>
+  
+  
+  
+
+
+
+          </div>
+          
+
+<script>
+  window.addEventListener('tabs:register', () => {
+    let { activeClass } = CONFIG.comments;
+    if (CONFIG.comments.storage) {
+      activeClass = localStorage.getItem('comments_active') || activeClass;
+    }
+    if (activeClass) {
+      let activeTab = document.querySelector(`a[href="#comment-${activeClass}"]`);
+      if (activeTab) {
+        activeTab.click();
+      }
+    }
+  });
+  if (CONFIG.comments.storage) {
+    window.addEventListener('tabs:click', event => {
+      if (!event.target.matches('.tabs-comment .tab-content .tab-pane')) return;
+      let commentClass = event.target.classList[1];
+      localStorage.setItem('comments_active', commentClass);
+    });
+  }
+</script>
+
+        </div>
+          
+  
+  <div class="toggle sidebar-toggle">
+    <span class="toggle-line toggle-line-first"></span>
+    <span class="toggle-line toggle-line-middle"></span>
+    <span class="toggle-line toggle-line-last"></span>
+  </div>
+
+  <aside class="sidebar">
+    <div class="sidebar-inner">
+
+      <ul class="sidebar-nav motion-element">
+        <li class="sidebar-nav-toc">
+          文章目录
+        </li>
+        <li class="sidebar-nav-overview">
+          站点概览
+        </li>
+      </ul>
+
+      <!--noindex-->
+      <div class="post-toc-wrap sidebar-panel">
+          <div class="post-toc motion-element"><ol class="nav"><li class="nav-item nav-level-2"><a class="nav-link" href="#%E9%9C%80%E6%B1%82%E5%88%86%E6%9E%90"><span class="nav-number">1.</span> <span class="nav-text">需求分析</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E9%85%8D%E7%BD%AE%E5%8A%A0%E8%BD%BD"><span class="nav-number">2.</span> <span class="nav-text">配置加载</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E5%89%AA%E5%88%87%E6%9D%BF%E7%9B%91%E5%90%AC"><span class="nav-number">3.</span> <span class="nav-text">剪切板监听</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E6%B7%BB%E5%8A%A0%E7%94%9F%E8%AF%8D"><span class="nav-number">4.</span> <span class="nav-text">添加生词</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E6%89%93%E5%8C%85%E4%B8%8E%E5%90%AF%E5%8A%A8"><span class="nav-number">5.</span> <span class="nav-text">打包与启动</span></a></li></ol></div>
+      </div>
+      <!--/noindex-->
+
+      <div class="site-overview-wrap sidebar-panel">
+        <div class="site-author motion-element" itemprop="author" itemscope itemtype="http://schema.org/Person">
+    <img class="site-author-image" itemprop="image" alt="predicate"
+      src="/images/avatar.jpg">
+  <p class="site-author-name" itemprop="name">predicate</p>
+  <div class="site-description" itemprop="description">因为热爱，所以坚持。</div>
+</div>
+<div class="site-state-wrap motion-element">
+  <nav class="site-state">
+      <div class="site-state-item site-state-posts">
+          <a href="/archives/">
+        
+          <span class="site-state-item-count">21</span>
+          <span class="site-state-item-name">日志</span>
+        </a>
+      </div>
+      <div class="site-state-item site-state-categories">
+            <a href="/categories/">
+          
+        <span class="site-state-item-count">13</span>
+        <span class="site-state-item-name">分类</span></a>
+      </div>
+      <div class="site-state-item site-state-tags">
+            <a href="/tags/">
+          
+        <span class="site-state-item-count">27</span>
+        <span class="site-state-item-name">标签</span></a>
+      </div>
+  </nav>
+</div>
+  <div class="links-of-author motion-element">
+      <span class="links-of-author-item">
+        <a href="https://github.com/killlowkey" title="GitHub → https:&#x2F;&#x2F;github.com&#x2F;killlowkey" rel="noopener" target="_blank"><i class="fa fa-fw fa-github"></i>GitHub</a>
+      </span>
+  </div>
+
+
+
+      </div>
+
+    </div>
+  </aside>
+  <div id="sidebar-dimmer"></div>
+
+
+      </div>
+    </main>
+
+    <footer class="footer">
+      <div class="footer-inner">
+        
+
+        
+
+<div class="copyright">
+  
+  &copy; 
+  <span itemprop="copyrightYear">2022</span>
+  <span class="with-love">
+    <i class="fa fa-user"></i>
+  </span>
+  <span class="author" itemprop="copyrightHolder">predicate</span>
+</div>
+  <div class="powered-by">由 <a href="https://hexo.io/" class="theme-link" rel="noopener" target="_blank">Hexo</a> & <a href="https://theme-next.org/" class="theme-link" rel="noopener" target="_blank">NexT.Gemini</a> 强力驱动
+  </div>
+
+        
+
+
+
+
+
+
+
+
+      </div>
+    </footer>
+  </div>
+
+  
+  <script src="/lib/anime.min.js"></script>
+  <script src="/lib/velocity/velocity.min.js"></script>
+  <script src="/lib/velocity/velocity.ui.min.js"></script>
+
+<script src="/js/utils.js"></script>
+
+<script src="/js/motion.js"></script>
+
+
+<script src="/js/schemes/pisces.js"></script>
+
+
+<script src="/js/next-boot.js"></script>
+
+
+
+
+  
+
+
+
+
+  
+<script src="/js/local-search.js"></script>
+
+
+
+
+
+
+
+
+
+
+
+
+
+  
+
+  
+
+</body>
+</html>

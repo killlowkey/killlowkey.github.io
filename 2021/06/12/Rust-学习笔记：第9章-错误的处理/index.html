@@ -1,0 +1,635 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=2">
+<meta name="theme-color" content="#222">
+<meta name="generator" content="Hexo 5.3.0">
+  <link rel="apple-touch-icon" sizes="180x180" href="/images/apple-touch-icon-next.png">
+  <link rel="icon" type="image/png" sizes="32x32" href="/images/favicon-32x32-next.png">
+  <link rel="icon" type="image/png" sizes="16x16" href="/images/favicon-16x16-next.png">
+  <link rel="mask-icon" href="/images/logo.svg" color="#222">
+
+<link rel="stylesheet" href="/css/main.css">
+
+
+<link rel="stylesheet" href="/lib/font-awesome/css/font-awesome.min.css">
+
+<script id="hexo-configurations">
+    var NexT = window.NexT || {};
+    var CONFIG = {"hostname":"example.com","root":"/","scheme":"Gemini","version":"7.8.0","exturl":false,"sidebar":{"position":"left","display":"post","padding":18,"offset":12,"onmobile":false},"copycode":{"enable":false,"show_result":false,"style":null},"back2top":{"enable":true,"sidebar":false,"scrollpercent":false},"bookmark":{"enable":false,"color":"#222","save":"auto"},"fancybox":false,"mediumzoom":false,"lazyload":false,"pangu":false,"comments":{"style":"tabs","active":null,"storage":true,"lazyload":false,"nav":null},"algolia":{"hits":{"per_page":10},"labels":{"input_placeholder":"Search for Posts","hits_empty":"We didn't find any results for the search: ${query}","hits_stats":"${hits} results found in ${time} ms"}},"localsearch":{"enable":true,"trigger":"auto","top_n_per_article":1,"unescape":false,"preload":false},"motion":{"enable":true,"async":false,"transition":{"post_block":"fadeIn","post_header":"slideDownIn","post_body":"slideDownIn","coll_header":"slideLeftIn","sidebar":"slideUpIn"}},"path":"search.xml"};
+  </script>
+
+  <meta name="description" content="panic! 不可恢复的错误  Rust 错误处理概述 Java 通过try-catch 来处理错误，而在 Rust 并没有类似的异常机制   Rust  的可靠性：错误处理 大部分情况下：在编译时提示错误，并处理">
+<meta property="og:type" content="article">
+<meta property="og:title" content="Rust 学习笔记：第9章 错误的处理">
+<meta property="og:url" content="http://example.com/2021/06/12/Rust-%E5%AD%A6%E4%B9%A0%E7%AC%94%E8%AE%B0%EF%BC%9A%E7%AC%AC9%E7%AB%A0-%E9%94%99%E8%AF%AF%E7%9A%84%E5%A4%84%E7%90%86/index.html">
+<meta property="og:site_name" content="predicate | blog">
+<meta property="og:description" content="panic! 不可恢复的错误  Rust 错误处理概述 Java 通过try-catch 来处理错误，而在 Rust 并没有类似的异常机制   Rust  的可靠性：错误处理 大部分情况下：在编译时提示错误，并处理">
+<meta property="og:locale" content="zh_CN">
+<meta property="article:published_time" content="2021-06-12T04:46:00.000Z">
+<meta property="article:modified_time" content="2022-03-24T04:57:14.180Z">
+<meta property="article:author" content="predicate">
+<meta property="article:tag" content="Rust">
+<meta property="article:tag" content="Rust 学习笔记">
+<meta name="twitter:card" content="summary">
+
+<link rel="canonical" href="http://example.com/2021/06/12/Rust-%E5%AD%A6%E4%B9%A0%E7%AC%94%E8%AE%B0%EF%BC%9A%E7%AC%AC9%E7%AB%A0-%E9%94%99%E8%AF%AF%E7%9A%84%E5%A4%84%E7%90%86/">
+
+
+<script id="page-configurations">
+  // https://hexo.io/docs/variables.html
+  CONFIG.page = {
+    sidebar: "",
+    isHome : false,
+    isPost : true,
+    lang   : 'zh-CN'
+  };
+</script>
+
+  <title>Rust 学习笔记：第9章 错误的处理 | predicate | blog</title>
+  
+
+
+
+
+
+
+  <noscript>
+  <style>
+  .use-motion .brand,
+  .use-motion .menu-item,
+  .sidebar-inner,
+  .use-motion .post-block,
+  .use-motion .pagination,
+  .use-motion .comments,
+  .use-motion .post-header,
+  .use-motion .post-body,
+  .use-motion .collection-header { opacity: initial; }
+
+  .use-motion .site-title,
+  .use-motion .site-subtitle {
+    opacity: initial;
+    top: initial;
+  }
+
+  .use-motion .logo-line-before i { left: initial; }
+  .use-motion .logo-line-after i { right: initial; }
+  </style>
+</noscript>
+
+</head>
+
+<body itemscope itemtype="http://schema.org/WebPage">
+  <div class="container use-motion">
+    <div class="headband"></div>
+
+    <header class="header" itemscope itemtype="http://schema.org/WPHeader">
+      <div class="header-inner"><div class="site-brand-container">
+  <div class="site-nav-toggle">
+    <div class="toggle" aria-label="切换导航栏">
+      <span class="toggle-line toggle-line-first"></span>
+      <span class="toggle-line toggle-line-middle"></span>
+      <span class="toggle-line toggle-line-last"></span>
+    </div>
+  </div>
+
+  <div class="site-meta">
+
+    <a href="/" class="brand" rel="start">
+      <span class="logo-line-before"><i></i></span>
+      <h1 class="site-title">predicate | blog</h1>
+      <span class="logo-line-after"><i></i></span>
+    </a>
+      <p class="site-subtitle" itemprop="description">你好，世界！</p>
+  </div>
+
+  <div class="site-nav-right">
+    <div class="toggle popup-trigger">
+        <i class="fa fa-search fa-fw fa-lg"></i>
+    </div>
+  </div>
+</div>
+
+
+
+
+<nav class="site-nav">
+  <ul id="menu" class="menu">
+        <li class="menu-item menu-item-home">
+
+    <a href="/" rel="section"><i class="fa fa-fw fa-home"></i>首页</a>
+
+  </li>
+        <li class="menu-item menu-item-categories">
+
+    <a href="/categories/" rel="section"><i class="fa fa-fw fa-th"></i>分类</a>
+
+  </li>
+        <li class="menu-item menu-item-tags">
+
+    <a href="/tags/" rel="section"><i class="fa fa-fw fa-tags"></i>标签</a>
+
+  </li>
+        <li class="menu-item menu-item-archives">
+
+    <a href="/archives/" rel="section"><i class="fa fa-fw fa-archive"></i>归档</a>
+
+  </li>
+      <li class="menu-item menu-item-search">
+        <a role="button" class="popup-trigger"><i class="fa fa-search fa-fw"></i>搜索
+        </a>
+      </li>
+  </ul>
+</nav>
+
+
+
+  <div class="search-pop-overlay">
+    <div class="popup search-popup">
+        <div class="search-header">
+  <span class="search-icon">
+    <i class="fa fa-search"></i>
+  </span>
+  <div class="search-input-container">
+    <input autocomplete="off" autocapitalize="off"
+           placeholder="搜索..." spellcheck="false"
+           type="search" class="search-input">
+  </div>
+  <span class="popup-btn-close">
+    <i class="fa fa-times-circle"></i>
+  </span>
+</div>
+<div id="search-result">
+  <div id="no-result">
+    <i class="fa fa-spinner fa-pulse fa-5x fa-fw"></i>
+  </div>
+</div>
+
+    </div>
+  </div>
+
+</div>
+    </header>
+
+    
+  <div class="back-to-top">
+    <i class="fa fa-arrow-up"></i>
+    <span>0%</span>
+  </div>
+
+
+    <main class="main">
+      <div class="main-inner">
+        <div class="content-wrap">
+          
+
+          <div class="content post posts-expand">
+            
+
+    
+  
+  
+  <article itemscope itemtype="http://schema.org/Article" class="post-block" lang="zh-CN">
+    <link itemprop="mainEntityOfPage" href="http://example.com/2021/06/12/Rust-%E5%AD%A6%E4%B9%A0%E7%AC%94%E8%AE%B0%EF%BC%9A%E7%AC%AC9%E7%AB%A0-%E9%94%99%E8%AF%AF%E7%9A%84%E5%A4%84%E7%90%86/">
+
+    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
+      <meta itemprop="image" content="/images/avatar.jpg">
+      <meta itemprop="name" content="predicate">
+      <meta itemprop="description" content="因为热爱，所以坚持。">
+    </span>
+
+    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
+      <meta itemprop="name" content="predicate | blog">
+    </span>
+      <header class="post-header">
+        <h1 class="post-title" itemprop="name headline">
+          Rust 学习笔记：第9章 错误的处理
+        </h1>
+
+        <div class="post-meta">
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="fa fa-calendar-o"></i>
+              </span>
+              <span class="post-meta-item-text">发表于</span>
+
+              <time title="创建时间：2021-06-12 12:46:00" itemprop="dateCreated datePublished" datetime="2021-06-12T12:46:00+08:00">2021-06-12</time>
+            </span>
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="fa fa-folder-o"></i>
+              </span>
+              <span class="post-meta-item-text">分类于</span>
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
+                  <a href="/categories/Rust/" itemprop="url" rel="index"><span itemprop="name">Rust</span></a>
+                </span>
+            </span>
+
+          
+
+        </div>
+      </header>
+
+    
+    
+    
+    <div class="post-body" itemprop="articleBody">
+
+      
+        <h2 id="panic"><a href="#panic" class="headerlink" title="panic!"></a>panic!</h2><blockquote>
+<p>不可恢复的错误</p>
+</blockquote>
+<h3 id="Rust-错误处理概述"><a href="#Rust-错误处理概述" class="headerlink" title="Rust 错误处理概述"></a>Rust 错误处理概述</h3><blockquote>
+<p>Java 通过try-catch 来处理错误，而在 Rust 并没有类似的异常机制</p>
+</blockquote>
+<ul>
+<li>Rust  的可靠性：错误处理<ul>
+<li>大部分情况下：在编译时提示错误，并处理 <a id="more"></a></li>
+</ul>
+</li>
+<li>错误的分类<ul>
+<li>可恢复<ul>
+<li>例如文件未找到，可再次尝试</li>
+</ul>
+</li>
+<li>不可恢复<ul>
+<li>bug，例如访问的索引超出了范围</li>
+</ul>
+</li>
+</ul>
+</li>
+<li>Rust 没有类似异常的机制<ul>
+<li>可恢复错误：<code>Result&lt;T, E&gt;</code></li>
+<li>不可恢复：<code>panic!</code> 宏</li>
+</ul>
+</li>
+</ul>
+<h3 id="不可恢复错误与-panic"><a href="#不可恢复错误与-panic" class="headerlink" title="不可恢复错误与 panic!"></a>不可恢复错误与 panic!</h3><ul>
+<li>当 panic! 宏执行<ul>
+<li>你的程序会打印一个错误信息</li>
+<li>展开（unwind）、清理调用栈（stack）</li>
+<li>退出程序</li>
+</ul>
+</li>
+</ul>
+<figure class="highlight rust"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">fn</span> <span class="title">main</span></span>() &#123;</span><br><span class="line">    <span class="comment">// 执行之后程序会发生 panic</span></span><br><span class="line">    <span class="built_in">panic!</span>(<span class="string">&quot;crash and nurn&quot;</span>);</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<h3 id="展开或中止（abort）调用栈"><a href="#展开或中止（abort）调用栈" class="headerlink" title="展开或中止（abort）调用栈"></a>展开或中止（abort）调用栈</h3><ul>
+<li><p>默认情况下，当 panic 发生</p>
+<ul>
+<li>程序展开调用栈（工作量大）<ul>
+<li>Rust 沿着调用栈往回走</li>
+<li>清理每个遇到的函数中的数据</li>
+</ul>
+</li>
+<li>或立即中止调用栈<ul>
+<li>不进行清理，直接停止程序</li>
+<li>程序内存需要 OS 进行清理</li>
+</ul>
+</li>
+</ul>
+</li>
+<li><p>想让二进制文件更小，把设置从 “展开” 改为 “中止”</p>
+<ul>
+<li>在 Cargo.toml 中适当的 profile 部分设置<figure class="highlight toml"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line"><span class="section">[profile.release]</span></span><br><span class="line"><span class="attr">panic</span>=<span class="string">&#x27;abort&#x27;</span></span><br></pre></td></tr></table></figure>
+
+</li>
+</ul>
+</li>
+</ul>
+<h3 id="使用-panic-产生的回溯信息"><a href="#使用-panic-产生的回溯信息" class="headerlink" title="使用 panic! 产生的回溯信息"></a>使用 panic! 产生的回溯信息</h3><ul>
+<li>panic! 可能会出现在<ul>
+<li>我们写的代码中</li>
+<li>我们所依赖的代码中</li>
+</ul>
+</li>
+<li>可通过调用 panic! 的函数的回溯信息来定位引起问题的代码</li>
+<li>通过设置环境变量 RUST_BACKTRACE 可得到回溯信息</li>
+<li>为了获取带有调式信息的回溯，必须启动调试符号（不带 <code>--release</code>）</li>
+</ul>
+<h2 id="Result-与可恢复的错误"><a href="#Result-与可恢复的错误" class="headerlink" title="Result 与可恢复的错误"></a>Result 与可恢复的错误</h2><h3 id="Result-枚举"><a href="#Result-枚举" class="headerlink" title="Result 枚举"></a>Result 枚举</h3><figure class="highlight rust"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br></pre></td><td class="code"><pre><span class="line"><span class="class"><span class="keyword">enum</span> <span class="title">Result</span></span>&lt;T, E&gt; &#123;</span><br><span class="line">    <span class="literal">Ok</span>(T),</span><br><span class="line">    <span class="literal">Err</span>(E),</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<ul>
+<li>T：操作成功情况下，OK 变体里返回的数据的类型</li>
+<li>E：操作成功情况下，Err 变体里返回的错误的类型</li>
+</ul>
+<figure class="highlight rust"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">use</span> std::fs::File;</span><br><span class="line"></span><br><span class="line"><span class="function"><span class="keyword">fn</span> <span class="title">main</span></span>() &#123;</span><br><span class="line">    <span class="comment">// 返回的是 Result 类型</span></span><br><span class="line">    <span class="keyword">let</span> f = File::open(<span class="string">&quot;hello.txt&quot;</span>);</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<h3 id="处理-Result-的一种方式：match-表达式"><a href="#处理-Result-的一种方式：match-表达式" class="headerlink" title="处理 Result 的一种方式：match 表达式"></a>处理 Result 的一种方式：match 表达式</h3><ul>
+<li>和 Option 枚举一样，Result 及其变体也是有 prelude 带入作用域</li>
+</ul>
+<figure class="highlight rust"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">use</span> std::fs::File;</span><br><span class="line"></span><br><span class="line"><span class="function"><span class="keyword">fn</span> <span class="title">main</span></span>() &#123;</span><br><span class="line">    <span class="keyword">let</span> f = File::open(<span class="string">&quot;hello.txt&quot;</span>);</span><br><span class="line">    </span><br><span class="line">    <span class="keyword">let</span> file = <span class="keyword">match</span> f &#123;</span><br><span class="line">        <span class="literal">Ok</span>(file) =&gt; file,</span><br><span class="line">        <span class="literal">Err</span>(error) =&gt; &#123;</span><br><span class="line">            <span class="built_in">panic!</span>(<span class="string">&quot;Error opening file &#123;:?&#125;&quot;</span>, error);</span><br><span class="line">        &#125;</span><br><span class="line">    &#125;;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<h3 id="匹配不同的错误"><a href="#匹配不同的错误" class="headerlink" title="匹配不同的错误"></a>匹配不同的错误</h3><figure class="highlight rust"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">use</span> std::fs::File;</span><br><span class="line"></span><br><span class="line"><span class="function"><span class="keyword">fn</span> <span class="title">main</span></span>() &#123;</span><br><span class="line">    <span class="keyword">let</span> f = File::open(<span class="string">&quot;hello.txt&quot;</span>);</span><br><span class="line">    </span><br><span class="line">    <span class="keyword">let</span> file = <span class="keyword">match</span> f &#123;</span><br><span class="line">        <span class="literal">Ok</span>(file) =&gt; file,</span><br><span class="line">        <span class="literal">Err</span>(error) =&gt; <span class="keyword">match</span> error.kind() &#123;</span><br><span class="line">            ErrorKind::NotFound =&gt; <span class="keyword">match</span> File::create(<span class="string">&quot;hello.txt&quot;</span>) &#123;</span><br><span class="line">                <span class="literal">Ok</span>(fc) =&gt; fc,</span><br><span class="line">                <span class="literal">Err</span>(e) =&gt; <span class="built_in">panic!</span>(<span class="string">&quot;Error createing file &#123;:?&#125;&quot;</span>, error),</span><br><span class="line">            &#125;,</span><br><span class="line">            other_error =&gt; <span class="built_in">panic!</span>(<span class="string">&quot;Error opening file &#123;:?&#125;&quot;</span>, other_error);</span><br><span class="line">        &#125;,</span><br><span class="line">    &#125;;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<ul>
+<li>上面例子使用了很多 match</li>
+<li>match 很有用，但是很原始</li>
+<li>闭包（closure），Result&lt;T, E&gt; 有很多方法<ul>
+<li>它们接收闭包作为参数</li>
+<li>使用 match 实现</li>
+<li>使用这些方法会让代码更简洁</li>
+</ul>
+</li>
+</ul>
+<figure class="highlight rust"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">use</span> std::fs::File;</span><br><span class="line"></span><br><span class="line"><span class="function"><span class="keyword">fn</span> <span class="title">main</span></span>() &#123;</span><br><span class="line">    <span class="keyword">let</span> f = File::open(<span class="string">&quot;hello.txt&quot;</span>).unwrap_or_else(|error| &#123;</span><br><span class="line">        <span class="keyword">if</span> error.kind() == ErrorKind::NotFound &#123;</span><br><span class="line">            File::create(<span class="string">&quot;hello.txt&quot;</span>).unwrap_or_else(|error| &#123;</span><br><span class="line">                <span class="built_in">panic!</span>(<span class="string">&quot;Error createing file &#123;:?&#125;&quot;</span>, error)</span><br><span class="line">            &#125;)</span><br><span class="line">        &#125; <span class="keyword">else</span> &#123;</span><br><span class="line">            <span class="built_in">panic!</span>(<span class="string">&quot;Error opening file &#123;:?&#125;&quot;</span>, error)</span><br><span class="line">        &#125;</span><br><span class="line">	&#125;);</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<h3 id="unwrap"><a href="#unwrap" class="headerlink" title="unwrap"></a>unwrap</h3><ul>
+<li>unwrap：match 表达式的一个快捷方法<ul>
+<li>如果 Result 结果是 OK，返回 OK 里面的值</li>
+<li>如果 Result 结果是 Err，调用 panic! 宏</li>
+</ul>
+</li>
+</ul>
+<figure class="highlight rust"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">use</span> std::fs::File;</span><br><span class="line"></span><br><span class="line"><span class="function"><span class="keyword">fn</span> <span class="title">main</span></span>() &#123;</span><br><span class="line">    <span class="keyword">let</span> f = File::open(<span class="string">&quot;hello.txt&quot;</span>).unwrap();</span><br><span class="line">    <span class="comment">// let f = File::open(&quot;hello.txt&quot;).unwrap();.expect(&quot;无法打开文件&quot;);</span></span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<h3 id="传播错误"><a href="#传播错误" class="headerlink" title="传播错误"></a>传播错误</h3><ul>
+<li> 以前都是在函数中处理错误</li>
+<li>现在将错误返回给调用者</li>
+</ul>
+<figure class="highlight rust"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">use</span> std::fs::File;</span><br><span class="line"><span class="keyword">use</span> std::io;</span><br><span class="line"><span class="keyword">use</span> std::io::Read;</span><br><span class="line"></span><br><span class="line"><span class="function"><span class="keyword">fn</span> <span class="title">read_username_from_file</span></span>() -&gt; <span class="built_in">Result</span>&lt;<span class="built_in">String</span>, io::Error&gt; &#123;</span><br><span class="line">    <span class="keyword">let</span> f = File::open(<span class="string">&quot;hello.txt&quot;</span>);</span><br><span class="line">    </span><br><span class="line">    <span class="keyword">let</span> <span class="keyword">mut</span> f = <span class="keyword">match</span> f &#123;</span><br><span class="line">        <span class="literal">Ok</span>(file) =&gt; file,</span><br><span class="line">        <span class="literal">Err</span>(e) =&gt; <span class="keyword">return</span> <span class="literal">Err</span>(e),</span><br><span class="line">    &#125;;</span><br><span class="line">    </span><br><span class="line">    <span class="keyword">let</span> <span class="keyword">mut</span> s = <span class="built_in">String</span>::new();</span><br><span class="line">    <span class="keyword">match</span> f.read_to_string(&amp;<span class="keyword">mut</span> s) &#123;</span><br><span class="line">        <span class="literal">Ok</span>(_) =&gt; <span class="literal">Ok</span>(s),</span><br><span class="line">        <span class="literal">Err</span>(e) =&gt; <span class="literal">Err</span>(e),</span><br><span class="line">    &#125;</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="function"><span class="keyword">fn</span> <span class="title">main</span></span>() &#123;</span><br><span class="line">    read_username_from_file();</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<h3 id="运算符"><a href="#运算符" class="headerlink" title="? 运算符"></a>? 运算符</h3><blockquote>
+<p><strong><code>?</code> 运算符只能用于返回 Result 的函数</strong></p>
+</blockquote>
+<ul>
+<li>? 运算符：传播错误的一种快捷方式</li>
+<li>如果 Result 是 Ok：Ok 中的值就是表达式的结果，然后继续执行程序</li>
+<li>如果 result 是 Err：Err 就是整个函数的返回值，就像使用了 return</li>
+</ul>
+<figure class="highlight rust"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">use</span> std::fs::File;</span><br><span class="line"><span class="keyword">use</span> std::io;</span><br><span class="line"><span class="keyword">use</span> std::io::Read;</span><br><span class="line"></span><br><span class="line"><span class="function"><span class="keyword">fn</span> <span class="title">read_username_from_file</span></span>() -&gt; <span class="built_in">Result</span>&lt;<span class="built_in">String</span>, io::Error&gt; &#123;</span><br><span class="line">    <span class="keyword">let</span> <span class="keyword">mut</span> f = File::open(<span class="string">&quot;hello.txt&quot;</span>)?;</span><br><span class="line">    <span class="keyword">let</span> <span class="keyword">mut</span> s = <span class="built_in">String</span>::new();</span><br><span class="line">    f.read_to_string(&amp;<span class="keyword">mut</span> s)?;</span><br><span class="line">    <span class="literal">Ok</span>(s)</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="function"><span class="keyword">fn</span> <span class="title">main</span></span>() &#123;</span><br><span class="line">    <span class="keyword">let</span> result = read_username_from_file();</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>如果觉得上述的方式太繁琐，那么可以将代码改成链式调用的方式</p>
+<figure class="highlight rust"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">use</span> std::fs::File;</span><br><span class="line"><span class="keyword">use</span> std::io;</span><br><span class="line"><span class="keyword">use</span> std::io::Read;</span><br><span class="line"></span><br><span class="line"><span class="function"><span class="keyword">fn</span> <span class="title">read_username_from_file</span></span>() -&gt; <span class="built_in">Result</span>&lt;<span class="built_in">String</span>, io::Error&gt; &#123;</span><br><span class="line">    <span class="keyword">let</span> <span class="keyword">mut</span> s = <span class="built_in">String</span>::new();</span><br><span class="line">    File::open(<span class="string">&quot;hello.txt&quot;</span>)?.read_to_string(&amp;<span class="keyword">mut</span> s)?;</span><br><span class="line">    <span class="literal">Ok</span>(s)</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="function"><span class="keyword">fn</span> <span class="title">main</span></span>() &#123;</span><br><span class="line">    <span class="keyword">let</span> result = read_username_from_file();</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+
+<h3 id="与-from-函数"><a href="#与-from-函数" class="headerlink" title="? 与 from 函数"></a>? 与 from 函数</h3><ul>
+<li>Trait <code>std::convert::From</code> 上的 from 函数<ul>
+<li>用于错误之间的转换</li>
+</ul>
+</li>
+<li>被 ? 所应用的错误，会隐式的被 from 函数处理</li>
+<li>当 ?  调用from函数时<ul>
+<li>它所接收的错误类型会被转化为当前函数返回类型所定义的错误类型</li>
+</ul>
+</li>
+<li>用于：针对不同错误原因，返回同一种错误类型<ul>
+<li>只要每个错误类型实现了转换为所返回的错误类型的 from 函数</li>
+</ul>
+</li>
+</ul>
+<h3 id="运算符与-main-函数"><a href="#运算符与-main-函数" class="headerlink" title="? 运算符与 main 函数"></a>? 运算符与 main 函数</h3><ul>
+<li><p>main 函数返回类型是：<code>()</code></p>
+<figure class="highlight rust"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">use</span> std::fs::File;</span><br><span class="line"></span><br><span class="line"><span class="function"><span class="keyword">fn</span> <span class="title">main</span></span>() &#123;</span><br><span class="line">    <span class="comment">// 编译不通过；?运算符只能用于 Result 返回值函数</span></span><br><span class="line">    <span class="keyword">let</span> f = File::open(<span class="string">&quot;hello.txt&quot;</span>)?;</span><br><span class="line">    <span class="literal">Ok</span>(())</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure></li>
+<li><p>main 函数的返回类型也可以是：<code>Result&lt;T, E&gt;</code></p>
+<figure class="highlight rust"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">use</span> std::fs::File;</span><br><span class="line"><span class="keyword">use</span> std::error::Error;</span><br><span class="line"></span><br><span class="line"><span class="function"><span class="keyword">fn</span> <span class="title">main</span></span>() -&gt; <span class="built_in">Result</span>&lt;(), <span class="built_in">Box</span>&lt;<span class="keyword">dyn</span> Error&gt;&gt; &#123;</span><br><span class="line">    <span class="keyword">let</span> f = File::open(<span class="string">&quot;hello.txt&quot;</span>)?;</span><br><span class="line">    <span class="literal">Ok</span>(())</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure></li>
+<li><p><code>Box&lt;dyn Error&gt;</code> 是 trait 对象</p>
+<ul>
+<li>简单理解：任何可能的错误类型</li>
+</ul>
+</li>
+</ul>
+<h2 id="何时使用-panic"><a href="#何时使用-panic" class="headerlink" title="何时使用 panic!"></a>何时使用 panic!</h2><h3 id="总体原则"><a href="#总体原则" class="headerlink" title="总体原则"></a>总体原则</h3><ul>
+<li>在定义一个可能失败的函数时，优先考虑返回 Result</li>
+<li>否则就 panic!</li>
+</ul>
+<h3 id="编写示例、原型代码、测试"><a href="#编写示例、原型代码、测试" class="headerlink" title="编写示例、原型代码、测试"></a>编写示例、原型代码、测试</h3><ul>
+<li>可以使用 panic!<ul>
+<li>演示某些概念：unwrap</li>
+<li>原型代码：unwrap、expect</li>
+<li>测试：unwrap、expect</li>
+</ul>
+</li>
+</ul>
+<h3 id="肯定-Result-结果是-Ok"><a href="#肯定-Result-结果是-Ok" class="headerlink" title="肯定 Result 结果是 Ok"></a>肯定 Result 结果是 Ok</h3><ul>
+<li>你可以确定 Result 就是 Ok：unwrap</li>
+</ul>
+<figure class="highlight rust"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">use</span> std::net::IpAddr;</span><br><span class="line"></span><br><span class="line"><span class="function"><span class="keyword">fn</span> <span class="title">main</span></span>() &#123;</span><br><span class="line">    <span class="keyword">let</span> home: IpAddr = <span class="string">&quot;127.0.0.1&quot;</span>.parse().unwrap();</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<h3 id="错误处理的指导性建议"><a href="#错误处理的指导性建议" class="headerlink" title="错误处理的指导性建议"></a>错误处理的指导性建议</h3><ul>
+<li>当代码最终可能处于损坏状态时，最后使用 panic!</li>
+<li>损坏状态（bad state）：某些假设、保证、约定或不可变性被打破<ul>
+<li>例如非法的值、矛盾的值或空缺的值被传入代码</li>
+<li>以及下列中的一条<ul>
+<li>这种损坏状态并不是预期能够偶然发生的事情</li>
+<li>在此之后，你的代码如果处于这种损坏状态就无法运行</li>
+<li>在你使用的类型中没有一个好的方法来将这些信息（处于损坏状态）进行编码</li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+<h3 id="场景建议"><a href="#场景建议" class="headerlink" title="场景建议"></a>场景建议</h3><ul>
+<li>调用你的代码，传入无意义的参数值：panic!</li>
+<li>调用外部不可控代码，返回非法错误，你无法修复：panic!</li>
+<li>如果失败是可预期的：Result</li>
+<li>当你的代码对值进行操作，首先应该验证这些值：panic!</li>
+</ul>
+<h3 id="为验证创建自定义类型"><a href="#为验证创建自定义类型" class="headerlink" title="为验证创建自定义类型"></a>为验证创建自定义类型</h3><ul>
+<li>创建新的类型，把验证逻辑放在构造实例的函数里</li>
+<li>getter：返回字段数据</li>
+</ul>
+<p>这种方式校验很简单，如果函数变多了，那么我们校验代码要重复很多，所以将验证逻辑放在构造实例函数中，会节省代码量。</p>
+<figure class="highlight rust"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">fn</span> <span class="title">main</span></span>() &#123;</span><br><span class="line">    <span class="keyword">loop</span> &#123;</span><br><span class="line">        <span class="keyword">let</span> guess = <span class="string">&quot;32&quot;</span>;</span><br><span class="line">        <span class="keyword">let</span> guess: <span class="built_in">i32</span> = <span class="keyword">match</span> guess.trim().parse() &#123;</span><br><span class="line">            <span class="literal">Ok</span>(num) =&gt; num,</span><br><span class="line">            <span class="literal">Err</span>(_) =&gt; <span class="keyword">continue</span>,</span><br><span class="line">        &#125;;</span><br><span class="line">        </span><br><span class="line">        <span class="keyword">if</span> guess &lt; <span class="number">1</span> || guess &gt; <span class="number">100</span> &#123;</span><br><span class="line">            <span class="built_in">println!</span>(<span class="string">&quot;The secret number will be between 1 and 100&quot;</span>);</span><br><span class="line">            <span class="keyword">continue</span>;</span><br><span class="line">        &#125;</span><br><span class="line">    &#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<figure class="highlight rust"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">pub</span> <span class="class"><span class="keyword">struct</span> <span class="title">Guess</span></span> &#123;</span><br><span class="line">    <span class="comment">// 设置 private 不向外部直接暴露该字段，而是通过 getter 函数来暴露</span></span><br><span class="line">    value: <span class="built_in">i32</span> </span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="keyword">impl</span> Guess &#123;</span><br><span class="line">    <span class="keyword">pub</span> <span class="function"><span class="keyword">fn</span> <span class="title">new</span></span>(value: <span class="built_in">i32</span>) -&gt; Guess &#123;</span><br><span class="line">        <span class="keyword">if</span> guess &lt; <span class="number">1</span> || guess &gt; <span class="number">100</span> &#123;</span><br><span class="line">            <span class="built_in">panic!</span>(<span class="string">&quot;The secret number will be between 1 and 100, got &#123;&#125;&quot;</span>, value);</span><br><span class="line">        &#125;</span><br><span class="line">        Guess &#123; value &#125;</span><br><span class="line">    &#125;</span><br><span class="line">    </span><br><span class="line">    <span class="keyword">pub</span> <span class="function"><span class="keyword">fn</span> <span class="title">value</span></span>(&amp;<span class="keyword">self</span>) -&gt; <span class="built_in">i32</span> &#123;</span><br><span class="line">        <span class="keyword">self</span>.value</span><br><span class="line">    &#125;</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="function"><span class="keyword">fn</span> <span class="title">main</span></span>() &#123;</span><br><span class="line">    <span class="keyword">loop</span> &#123;</span><br><span class="line">        <span class="keyword">let</span> guess = <span class="string">&quot;32&quot;</span>;</span><br><span class="line">        <span class="keyword">let</span> guess: <span class="built_in">i32</span> = <span class="keyword">match</span> guess.trim().parse() &#123;</span><br><span class="line">            <span class="literal">Ok</span>(num) =&gt; num,</span><br><span class="line">            <span class="literal">Err</span>(_) =&gt; <span class="keyword">continue</span>,</span><br><span class="line">        &#125;;</span><br><span class="line">        </span><br><span class="line">        <span class="keyword">let</span> guess = Guess::new(guess);</span><br><span class="line">    &#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+    </div>
+
+    
+    
+    
+
+      <footer class="post-footer">
+          <div class="post-tags">
+              <a href="/tags/Rust/" <i class="fa fa-tag"></i>Rust</a>
+              <a href="/tags/Rust-%E5%AD%A6%E4%B9%A0%E7%AC%94%E8%AE%B0/" <i class="fa fa-tag"></i>Rust 学习笔记</a>
+          </div>
+
+        
+
+
+        
+    <div class="post-nav">
+      <div class="post-nav-item">
+    <a href="/2021/06/12/Rust-%E5%AD%A6%E4%B9%A0%E7%AC%94%E8%AE%B0%EF%BC%9A%E7%AC%AC8%E7%AB%A0-%E5%B8%B8%E7%94%A8%E7%9A%84%E9%9B%86%E5%90%88/" rel="prev" title="Rust 学习笔记：第8章 常用的集合">
+      <i class="fa fa-chevron-left"></i> Rust 学习笔记：第8章 常用的集合
+    </a></div>
+      <div class="post-nav-item">
+    <a href="/2021/07/06/Rust-%E5%AD%A6%E4%B9%A0%E7%AC%94%E8%AE%B0%EF%BC%9A%E7%AC%AC10%E7%AB%A0-%E6%B3%9B%E5%9E%8B%E3%80%81trait%E3%80%81%E7%94%9F%E5%91%BD%E5%91%A8%E6%9C%9F/" rel="next" title="Rust 学习笔记：第10章  泛型、trait、生命周期">
+      Rust 学习笔记：第10章  泛型、trait、生命周期 <i class="fa fa-chevron-right"></i>
+    </a></div>
+    </div>
+      </footer>
+    
+  </article>
+  
+  
+  
+
+
+
+          </div>
+          
+
+<script>
+  window.addEventListener('tabs:register', () => {
+    let { activeClass } = CONFIG.comments;
+    if (CONFIG.comments.storage) {
+      activeClass = localStorage.getItem('comments_active') || activeClass;
+    }
+    if (activeClass) {
+      let activeTab = document.querySelector(`a[href="#comment-${activeClass}"]`);
+      if (activeTab) {
+        activeTab.click();
+      }
+    }
+  });
+  if (CONFIG.comments.storage) {
+    window.addEventListener('tabs:click', event => {
+      if (!event.target.matches('.tabs-comment .tab-content .tab-pane')) return;
+      let commentClass = event.target.classList[1];
+      localStorage.setItem('comments_active', commentClass);
+    });
+  }
+</script>
+
+        </div>
+          
+  
+  <div class="toggle sidebar-toggle">
+    <span class="toggle-line toggle-line-first"></span>
+    <span class="toggle-line toggle-line-middle"></span>
+    <span class="toggle-line toggle-line-last"></span>
+  </div>
+
+  <aside class="sidebar">
+    <div class="sidebar-inner">
+
+      <ul class="sidebar-nav motion-element">
+        <li class="sidebar-nav-toc">
+          文章目录
+        </li>
+        <li class="sidebar-nav-overview">
+          站点概览
+        </li>
+      </ul>
+
+      <!--noindex-->
+      <div class="post-toc-wrap sidebar-panel">
+          <div class="post-toc motion-element"><ol class="nav"><li class="nav-item nav-level-2"><a class="nav-link" href="#panic"><span class="nav-number">1.</span> <span class="nav-text">panic!</span></a><ol class="nav-child"><li class="nav-item nav-level-3"><a class="nav-link" href="#Rust-%E9%94%99%E8%AF%AF%E5%A4%84%E7%90%86%E6%A6%82%E8%BF%B0"><span class="nav-number">1.1.</span> <span class="nav-text">Rust 错误处理概述</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#%E4%B8%8D%E5%8F%AF%E6%81%A2%E5%A4%8D%E9%94%99%E8%AF%AF%E4%B8%8E-panic"><span class="nav-number">1.2.</span> <span class="nav-text">不可恢复错误与 panic!</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#%E5%B1%95%E5%BC%80%E6%88%96%E4%B8%AD%E6%AD%A2%EF%BC%88abort%EF%BC%89%E8%B0%83%E7%94%A8%E6%A0%88"><span class="nav-number">1.3.</span> <span class="nav-text">展开或中止（abort）调用栈</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#%E4%BD%BF%E7%94%A8-panic-%E4%BA%A7%E7%94%9F%E7%9A%84%E5%9B%9E%E6%BA%AF%E4%BF%A1%E6%81%AF"><span class="nav-number">1.4.</span> <span class="nav-text">使用 panic! 产生的回溯信息</span></a></li></ol></li><li class="nav-item nav-level-2"><a class="nav-link" href="#Result-%E4%B8%8E%E5%8F%AF%E6%81%A2%E5%A4%8D%E7%9A%84%E9%94%99%E8%AF%AF"><span class="nav-number">2.</span> <span class="nav-text">Result 与可恢复的错误</span></a><ol class="nav-child"><li class="nav-item nav-level-3"><a class="nav-link" href="#Result-%E6%9E%9A%E4%B8%BE"><span class="nav-number">2.1.</span> <span class="nav-text">Result 枚举</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#%E5%A4%84%E7%90%86-Result-%E7%9A%84%E4%B8%80%E7%A7%8D%E6%96%B9%E5%BC%8F%EF%BC%9Amatch-%E8%A1%A8%E8%BE%BE%E5%BC%8F"><span class="nav-number">2.2.</span> <span class="nav-text">处理 Result 的一种方式：match 表达式</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#%E5%8C%B9%E9%85%8D%E4%B8%8D%E5%90%8C%E7%9A%84%E9%94%99%E8%AF%AF"><span class="nav-number">2.3.</span> <span class="nav-text">匹配不同的错误</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#unwrap"><span class="nav-number">2.4.</span> <span class="nav-text">unwrap</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#%E4%BC%A0%E6%92%AD%E9%94%99%E8%AF%AF"><span class="nav-number">2.5.</span> <span class="nav-text">传播错误</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#%E8%BF%90%E7%AE%97%E7%AC%A6"><span class="nav-number">2.6.</span> <span class="nav-text">? 运算符</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#%E4%B8%8E-from-%E5%87%BD%E6%95%B0"><span class="nav-number">2.7.</span> <span class="nav-text">? 与 from 函数</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#%E8%BF%90%E7%AE%97%E7%AC%A6%E4%B8%8E-main-%E5%87%BD%E6%95%B0"><span class="nav-number">2.8.</span> <span class="nav-text">? 运算符与 main 函数</span></a></li></ol></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E4%BD%95%E6%97%B6%E4%BD%BF%E7%94%A8-panic"><span class="nav-number">3.</span> <span class="nav-text">何时使用 panic!</span></a><ol class="nav-child"><li class="nav-item nav-level-3"><a class="nav-link" href="#%E6%80%BB%E4%BD%93%E5%8E%9F%E5%88%99"><span class="nav-number">3.1.</span> <span class="nav-text">总体原则</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#%E7%BC%96%E5%86%99%E7%A4%BA%E4%BE%8B%E3%80%81%E5%8E%9F%E5%9E%8B%E4%BB%A3%E7%A0%81%E3%80%81%E6%B5%8B%E8%AF%95"><span class="nav-number">3.2.</span> <span class="nav-text">编写示例、原型代码、测试</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#%E8%82%AF%E5%AE%9A-Result-%E7%BB%93%E6%9E%9C%E6%98%AF-Ok"><span class="nav-number">3.3.</span> <span class="nav-text">肯定 Result 结果是 Ok</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#%E9%94%99%E8%AF%AF%E5%A4%84%E7%90%86%E7%9A%84%E6%8C%87%E5%AF%BC%E6%80%A7%E5%BB%BA%E8%AE%AE"><span class="nav-number">3.4.</span> <span class="nav-text">错误处理的指导性建议</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#%E5%9C%BA%E6%99%AF%E5%BB%BA%E8%AE%AE"><span class="nav-number">3.5.</span> <span class="nav-text">场景建议</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#%E4%B8%BA%E9%AA%8C%E8%AF%81%E5%88%9B%E5%BB%BA%E8%87%AA%E5%AE%9A%E4%B9%89%E7%B1%BB%E5%9E%8B"><span class="nav-number">3.6.</span> <span class="nav-text">为验证创建自定义类型</span></a></li></ol></li></ol></div>
+      </div>
+      <!--/noindex-->
+
+      <div class="site-overview-wrap sidebar-panel">
+        <div class="site-author motion-element" itemprop="author" itemscope itemtype="http://schema.org/Person">
+    <img class="site-author-image" itemprop="image" alt="predicate"
+      src="/images/avatar.jpg">
+  <p class="site-author-name" itemprop="name">predicate</p>
+  <div class="site-description" itemprop="description">因为热爱，所以坚持。</div>
+</div>
+<div class="site-state-wrap motion-element">
+  <nav class="site-state">
+      <div class="site-state-item site-state-posts">
+          <a href="/archives/">
+        
+          <span class="site-state-item-count">21</span>
+          <span class="site-state-item-name">日志</span>
+        </a>
+      </div>
+      <div class="site-state-item site-state-categories">
+            <a href="/categories/">
+          
+        <span class="site-state-item-count">13</span>
+        <span class="site-state-item-name">分类</span></a>
+      </div>
+      <div class="site-state-item site-state-tags">
+            <a href="/tags/">
+          
+        <span class="site-state-item-count">27</span>
+        <span class="site-state-item-name">标签</span></a>
+      </div>
+  </nav>
+</div>
+  <div class="links-of-author motion-element">
+      <span class="links-of-author-item">
+        <a href="https://github.com/killlowkey" title="GitHub → https:&#x2F;&#x2F;github.com&#x2F;killlowkey" rel="noopener" target="_blank"><i class="fa fa-fw fa-github"></i>GitHub</a>
+      </span>
+  </div>
+
+
+
+      </div>
+
+    </div>
+  </aside>
+  <div id="sidebar-dimmer"></div>
+
+
+      </div>
+    </main>
+
+    <footer class="footer">
+      <div class="footer-inner">
+        
+
+        
+
+<div class="copyright">
+  
+  &copy; 
+  <span itemprop="copyrightYear">2022</span>
+  <span class="with-love">
+    <i class="fa fa-user"></i>
+  </span>
+  <span class="author" itemprop="copyrightHolder">predicate</span>
+</div>
+  <div class="powered-by">由 <a href="https://hexo.io/" class="theme-link" rel="noopener" target="_blank">Hexo</a> & <a href="https://theme-next.org/" class="theme-link" rel="noopener" target="_blank">NexT.Gemini</a> 强力驱动
+  </div>
+
+        
+
+
+
+
+
+
+
+
+      </div>
+    </footer>
+  </div>
+
+  
+  <script src="/lib/anime.min.js"></script>
+  <script src="/lib/velocity/velocity.min.js"></script>
+  <script src="/lib/velocity/velocity.ui.min.js"></script>
+
+<script src="/js/utils.js"></script>
+
+<script src="/js/motion.js"></script>
+
+
+<script src="/js/schemes/pisces.js"></script>
+
+
+<script src="/js/next-boot.js"></script>
+
+
+
+
+  
+
+
+
+
+  
+<script src="/js/local-search.js"></script>
+
+
+
+
+
+
+
+
+
+
+
+
+
+  
+
+  
+
+</body>
+</html>

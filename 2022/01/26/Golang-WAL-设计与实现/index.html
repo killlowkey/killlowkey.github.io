@@ -1,0 +1,510 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=2">
+<meta name="theme-color" content="#222">
+<meta name="generator" content="Hexo 5.3.0">
+  <link rel="apple-touch-icon" sizes="180x180" href="/images/apple-touch-icon-next.png">
+  <link rel="icon" type="image/png" sizes="32x32" href="/images/favicon-32x32-next.png">
+  <link rel="icon" type="image/png" sizes="16x16" href="/images/favicon-16x16-next.png">
+  <link rel="mask-icon" href="/images/logo.svg" color="#222">
+
+<link rel="stylesheet" href="/css/main.css">
+
+
+<link rel="stylesheet" href="/lib/font-awesome/css/font-awesome.min.css">
+
+<script id="hexo-configurations">
+    var NexT = window.NexT || {};
+    var CONFIG = {"hostname":"example.com","root":"/","scheme":"Gemini","version":"7.8.0","exturl":false,"sidebar":{"position":"left","display":"post","padding":18,"offset":12,"onmobile":false},"copycode":{"enable":false,"show_result":false,"style":null},"back2top":{"enable":true,"sidebar":false,"scrollpercent":false},"bookmark":{"enable":false,"color":"#222","save":"auto"},"fancybox":false,"mediumzoom":false,"lazyload":false,"pangu":false,"comments":{"style":"tabs","active":null,"storage":true,"lazyload":false,"nav":null},"algolia":{"hits":{"per_page":10},"labels":{"input_placeholder":"Search for Posts","hits_empty":"We didn't find any results for the search: ${query}","hits_stats":"${hits} results found in ${time} ms"}},"localsearch":{"enable":true,"trigger":"auto","top_n_per_article":1,"unescape":false,"preload":false},"motion":{"enable":true,"async":false,"transition":{"post_block":"fadeIn","post_header":"slideDownIn","post_body":"slideDownIn","coll_header":"slideLeftIn","sidebar":"slideUpIn"}},"path":"search.xml"};
+  </script>
+
+  <meta name="description" content="Write Ahead Log（预写日志） 简称 WAL，用于记录程序内部操作，在程序奔溃恢复后，可以根据 WAL 来恢复程序原先的状态。 WAL 与日志框架设计有异曲同工之处，两者目标都是为了持久化数据，只不过两者用处不同罢了。本文会对 Golang 的 WAL 库进行分析，从而来学习 WAL 如何设计与优化。">
+<meta property="og:type" content="article">
+<meta property="og:title" content="Golang WAL 设计与实现">
+<meta property="og:url" content="http://example.com/2022/01/26/Golang-WAL-%E8%AE%BE%E8%AE%A1%E4%B8%8E%E5%AE%9E%E7%8E%B0/index.html">
+<meta property="og:site_name" content="predicate | blog">
+<meta property="og:description" content="Write Ahead Log（预写日志） 简称 WAL，用于记录程序内部操作，在程序奔溃恢复后，可以根据 WAL 来恢复程序原先的状态。 WAL 与日志框架设计有异曲同工之处，两者目标都是为了持久化数据，只不过两者用处不同罢了。本文会对 Golang 的 WAL 库进行分析，从而来学习 WAL 如何设计与优化。">
+<meta property="og:locale" content="zh_CN">
+<meta property="article:published_time" content="2022-01-26T07:19:00.000Z">
+<meta property="article:modified_time" content="2022-03-24T04:57:14.176Z">
+<meta property="article:author" content="predicate">
+<meta property="article:tag" content="WAL">
+<meta property="article:tag" content="Design">
+<meta name="twitter:card" content="summary">
+
+<link rel="canonical" href="http://example.com/2022/01/26/Golang-WAL-%E8%AE%BE%E8%AE%A1%E4%B8%8E%E5%AE%9E%E7%8E%B0/">
+
+
+<script id="page-configurations">
+  // https://hexo.io/docs/variables.html
+  CONFIG.page = {
+    sidebar: "",
+    isHome : false,
+    isPost : true,
+    lang   : 'zh-CN'
+  };
+</script>
+
+  <title>Golang WAL 设计与实现 | predicate | blog</title>
+  
+
+
+
+
+
+
+  <noscript>
+  <style>
+  .use-motion .brand,
+  .use-motion .menu-item,
+  .sidebar-inner,
+  .use-motion .post-block,
+  .use-motion .pagination,
+  .use-motion .comments,
+  .use-motion .post-header,
+  .use-motion .post-body,
+  .use-motion .collection-header { opacity: initial; }
+
+  .use-motion .site-title,
+  .use-motion .site-subtitle {
+    opacity: initial;
+    top: initial;
+  }
+
+  .use-motion .logo-line-before i { left: initial; }
+  .use-motion .logo-line-after i { right: initial; }
+  </style>
+</noscript>
+
+</head>
+
+<body itemscope itemtype="http://schema.org/WebPage">
+  <div class="container use-motion">
+    <div class="headband"></div>
+
+    <header class="header" itemscope itemtype="http://schema.org/WPHeader">
+      <div class="header-inner"><div class="site-brand-container">
+  <div class="site-nav-toggle">
+    <div class="toggle" aria-label="切换导航栏">
+      <span class="toggle-line toggle-line-first"></span>
+      <span class="toggle-line toggle-line-middle"></span>
+      <span class="toggle-line toggle-line-last"></span>
+    </div>
+  </div>
+
+  <div class="site-meta">
+
+    <a href="/" class="brand" rel="start">
+      <span class="logo-line-before"><i></i></span>
+      <h1 class="site-title">predicate | blog</h1>
+      <span class="logo-line-after"><i></i></span>
+    </a>
+      <p class="site-subtitle" itemprop="description">你好，世界！</p>
+  </div>
+
+  <div class="site-nav-right">
+    <div class="toggle popup-trigger">
+        <i class="fa fa-search fa-fw fa-lg"></i>
+    </div>
+  </div>
+</div>
+
+
+
+
+<nav class="site-nav">
+  <ul id="menu" class="menu">
+        <li class="menu-item menu-item-home">
+
+    <a href="/" rel="section"><i class="fa fa-fw fa-home"></i>首页</a>
+
+  </li>
+        <li class="menu-item menu-item-categories">
+
+    <a href="/categories/" rel="section"><i class="fa fa-fw fa-th"></i>分类</a>
+
+  </li>
+        <li class="menu-item menu-item-tags">
+
+    <a href="/tags/" rel="section"><i class="fa fa-fw fa-tags"></i>标签</a>
+
+  </li>
+        <li class="menu-item menu-item-archives">
+
+    <a href="/archives/" rel="section"><i class="fa fa-fw fa-archive"></i>归档</a>
+
+  </li>
+      <li class="menu-item menu-item-search">
+        <a role="button" class="popup-trigger"><i class="fa fa-search fa-fw"></i>搜索
+        </a>
+      </li>
+  </ul>
+</nav>
+
+
+
+  <div class="search-pop-overlay">
+    <div class="popup search-popup">
+        <div class="search-header">
+  <span class="search-icon">
+    <i class="fa fa-search"></i>
+  </span>
+  <div class="search-input-container">
+    <input autocomplete="off" autocapitalize="off"
+           placeholder="搜索..." spellcheck="false"
+           type="search" class="search-input">
+  </div>
+  <span class="popup-btn-close">
+    <i class="fa fa-times-circle"></i>
+  </span>
+</div>
+<div id="search-result">
+  <div id="no-result">
+    <i class="fa fa-spinner fa-pulse fa-5x fa-fw"></i>
+  </div>
+</div>
+
+    </div>
+  </div>
+
+</div>
+    </header>
+
+    
+  <div class="back-to-top">
+    <i class="fa fa-arrow-up"></i>
+    <span>0%</span>
+  </div>
+
+
+    <main class="main">
+      <div class="main-inner">
+        <div class="content-wrap">
+          
+
+          <div class="content post posts-expand">
+            
+
+    
+  
+  
+  <article itemscope itemtype="http://schema.org/Article" class="post-block" lang="zh-CN">
+    <link itemprop="mainEntityOfPage" href="http://example.com/2022/01/26/Golang-WAL-%E8%AE%BE%E8%AE%A1%E4%B8%8E%E5%AE%9E%E7%8E%B0/">
+
+    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
+      <meta itemprop="image" content="/images/avatar.jpg">
+      <meta itemprop="name" content="predicate">
+      <meta itemprop="description" content="因为热爱，所以坚持。">
+    </span>
+
+    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
+      <meta itemprop="name" content="predicate | blog">
+    </span>
+      <header class="post-header">
+        <h1 class="post-title" itemprop="name headline">
+          Golang WAL 设计与实现
+        </h1>
+
+        <div class="post-meta">
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="fa fa-calendar-o"></i>
+              </span>
+              <span class="post-meta-item-text">发表于</span>
+
+              <time title="创建时间：2022-01-26 15:19:00" itemprop="dateCreated datePublished" datetime="2022-01-26T15:19:00+08:00">2022-01-26</time>
+            </span>
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="fa fa-folder-o"></i>
+              </span>
+              <span class="post-meta-item-text">分类于</span>
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
+                  <a href="/categories/WAL/" itemprop="url" rel="index"><span itemprop="name">WAL</span></a>
+                </span>
+            </span>
+
+          
+
+        </div>
+      </header>
+
+    
+    
+    
+    <div class="post-body" itemprop="articleBody">
+
+      
+        <p>Write Ahead Log（预写日志） 简称 WAL，用于记录程序内部操作，在程序奔溃恢复后，可以根据 WAL 来恢复程序原先的状态。</p>
+<p>WAL 与日志框架设计有异曲同工之处，两者目标都是为了持久化数据，只不过两者用处不同罢了。本文会对 Golang 的 <a target="_blank" rel="noopener" href="https://github.com/tidwall/wal">WAL</a> 库进行分析，从而来学习 WAL 如何设计与优化。</p>
+<a id="more"></a>
+
+
+
+<h2 id="需求分析"><a href="#需求分析" class="headerlink" title="需求分析"></a>需求分析</h2><p>对于 WAL 库，最基本的功能就是向外部提供读写的接口，用户读取时根据 log offset 读取，写入时则追加到WAL 文件的尾部。WAL 与日志框架一样，最终都将数据持久到文件系统中，所以需要对文件分段（segment）设计，分段之后可以有利于并发读写。对于文件的写入操作，批处理机制可以将多个操作合并成一个操作，从而将多次系统调用减少成一次，这样可以极大的提高性能。谈及数据持久化时，则需要对 entry 进行序列化与反序列化操作。</p>
+<p>不断的向 WAL 写入日志，会使得 WAL 大小不断的增大，分段设计虽然能解决单个的文件很大的问题，但无法释放原先存储空间。此时需要对 WAL 进行 GC（垃圾收集） 操作，回收不在使用的 WAL，从而减少存储空间。</p>
+<p>综合以上场景，一个 WAL 库应该具备如下的功能：</p>
+<ol>
+<li>基本的读写接口</li>
+<li>日志文件分段</li>
+<li>批处理</li>
+<li>序列化与反序列化</li>
+<li>垃圾回收</li>
+</ol>
+<h2 id="Struct-设计"><a href="#Struct-设计" class="headerlink" title="Struct 设计"></a>Struct 设计</h2><p>对于库来说，拥有一个优秀的 struct 设计，使得后续的实现更加的事半功倍，同时可以让模块之间职责清晰，分工明确。</p>
+<p>在 Golang WAL 中，我们重点关注 Log、segment、batch、Options 这些 struct。Options 可以影响 Log 内部行为，比如 Segment 大小、序列化方式、写同步。Log 由多个 segment 组成，同时会持有整个 WAL 第一条与最后一条日志的 index，写入数据时，直接追加到 sfile（WAL 中尾部 segment）文件尾部，Log 中的 LRU 的 cache，用于日志的读取。</p>
+<figure class="highlight go"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">type</span> Log <span class="keyword">struct</span> &#123;</span><br><span class="line">	mu         sync.RWMutex</span><br><span class="line">	path       <span class="keyword">string</span>      <span class="comment">// absolute path to log directory</span></span><br><span class="line">	opts       Options     <span class="comment">// log options</span></span><br><span class="line">	closed     <span class="keyword">bool</span>        <span class="comment">// log is closed</span></span><br><span class="line">	corrupt    <span class="keyword">bool</span>        <span class="comment">// log may be corrupt</span></span><br><span class="line">	segments   []*segment  <span class="comment">// all known log segments</span></span><br><span class="line">	firstIndex <span class="keyword">uint64</span>      <span class="comment">// index of the first entry in log</span></span><br><span class="line">	lastIndex  <span class="keyword">uint64</span>      <span class="comment">// index of the last entry in log</span></span><br><span class="line">	sfile      *os.File    <span class="comment">// tail segment file handle</span></span><br><span class="line">	wbatch     Batch       <span class="comment">// reusable write batch</span></span><br><span class="line">	scache     tinylru.LRU <span class="comment">// segment entries cache</span></span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<figure class="highlight go"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">type</span> segment <span class="keyword">struct</span> &#123;</span><br><span class="line">	path  <span class="keyword">string</span> <span class="comment">// path of segment file</span></span><br><span class="line">	index <span class="keyword">uint64</span> <span class="comment">// first index of segment</span></span><br><span class="line">	ebuf  []<span class="keyword">byte</span> <span class="comment">// cached entries buffer</span></span><br><span class="line">	epos  []bpos <span class="comment">// cached entries positions in buffer</span></span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<figure class="highlight go"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">type</span> Options <span class="keyword">struct</span> &#123;</span><br><span class="line">	<span class="comment">// NoSync disables fsync after writes. This is less durable and puts the</span></span><br><span class="line">	<span class="comment">// log at risk of data loss when there&#x27;s a server crash.</span></span><br><span class="line">	NoSync <span class="keyword">bool</span></span><br><span class="line">	<span class="comment">// SegmentSize of each segment. This is just a target value, actual size</span></span><br><span class="line">	<span class="comment">// may differ. Default is 20 MB.</span></span><br><span class="line">	SegmentSize <span class="keyword">int</span></span><br><span class="line">	<span class="comment">// LogFormat is the format of the log files. Default is Binary.</span></span><br><span class="line">	LogFormat LogFormat</span><br><span class="line">	<span class="comment">// SegmentCacheSize is the maximum number of segments that will be held in</span></span><br><span class="line">	<span class="comment">// memory for caching. Increasing this value may enhance performance for</span></span><br><span class="line">	<span class="comment">// concurrent read operations. Default is 1</span></span><br><span class="line">	SegmentCacheSize <span class="keyword">int</span></span><br><span class="line">	<span class="comment">// NoCopy allows for the Read() operation to return the raw underlying data</span></span><br><span class="line">	<span class="comment">// slice. This is an optimization to help minimize allocations. When this</span></span><br><span class="line">	<span class="comment">// option is set, do not modify the returned data because it may affect</span></span><br><span class="line">	<span class="comment">// other Read calls. Default false</span></span><br><span class="line">	NoCopy <span class="keyword">bool</span></span><br><span class="line">	<span class="comment">// Perms represents the datafiles modes and permission bits</span></span><br><span class="line">	DirPerms  os.FileMode</span><br><span class="line">	FilePerms os.FileMode</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+
+<h2 id="源码阅读"><a href="#源码阅读" class="headerlink" title="源码阅读"></a>源码阅读</h2><h3 id="Open"><a href="#Open" class="headerlink" title="Open"></a>Open</h3><p>Open 方法接收 string 与 Options 参数，返回 Log struct，首先对传入的 Options 进行校验，如果不符合要求，那么设置默认的参数。</p>
+<p>倘若传入的 path 目录不存在，说明当前 WAL 并无数据，那么则需要创建对应的 path 目录。最后调用 load 方法来加载 path 目录下所有的 segment，并更新 Log 属性。</p>
+<p>load 方法会获取 path 所有的文件，文件名由 20、24、26 个字符组成，该文件名前 20 个字符对应的 segment 开始的 index。首先将文件名前 20 个字符并解析为 uint64，然后根据 segment index 与 filename（path+name）创建 segment 追加到 Log 的 segments 中。</p>
+<figure class="highlight go"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// wal.go load</span></span><br><span class="line"><span class="keyword">for</span> _, fi := <span class="keyword">range</span> fis &#123;</span><br><span class="line">    name := fi.Name()</span><br><span class="line">    <span class="keyword">if</span> fi.IsDir() || <span class="built_in">len</span>(name) &lt; <span class="number">20</span> &#123;</span><br><span class="line">        <span class="keyword">continue</span></span><br><span class="line">    &#125;</span><br><span class="line">    index, err := strconv.ParseUint(name[:<span class="number">20</span>], <span class="number">10</span>, <span class="number">64</span>)</span><br><span class="line">    <span class="keyword">if</span> err != <span class="literal">nil</span> || index == <span class="number">0</span> &#123;</span><br><span class="line">        <span class="keyword">continue</span></span><br><span class="line">    &#125;</span><br><span class="line">    isStart := <span class="built_in">len</span>(name) == <span class="number">26</span> &amp;&amp; strings.HasSuffix(name, <span class="string">&quot;.START&quot;</span>)</span><br><span class="line">    isEnd := <span class="built_in">len</span>(name) == <span class="number">24</span> &amp;&amp; strings.HasSuffix(name, <span class="string">&quot;.END&quot;</span>)</span><br><span class="line">    <span class="keyword">if</span> <span class="built_in">len</span>(name) == <span class="number">20</span> || isStart || isEnd &#123;</span><br><span class="line">        <span class="keyword">if</span> isStart &#123;</span><br><span class="line">            startIdx = <span class="built_in">len</span>(l.segments)</span><br><span class="line">        &#125; <span class="keyword">else</span> <span class="keyword">if</span> isEnd &amp;&amp; endIdx == <span class="number">-1</span> &#123;</span><br><span class="line">            endIdx = <span class="built_in">len</span>(l.segments)</span><br><span class="line">        &#125;</span><br><span class="line">        l.segments = <span class="built_in">append</span>(l.segments, &amp;segment&#123;</span><br><span class="line">            index: index,</span><br><span class="line">            path:  filepath.Join(l.path, name),</span><br><span class="line">        &#125;)</span><br><span class="line">    &#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>如果 path 目录下包含了 .START 与 .END 结尾的文件，那么进行清除的工作，这操作实现原理在此不进行讲解。之后会打开 WAL 最后一个 segment，并且将该文件的 position 偏移到 2。然后对 Log 中的 firstIndex 与 lastIndex 进行更新操作，前者为 segments 第一个元素的 index，后者为 segments 最后一个元素的 index 加上 epos 值减去 1，从而推导出最后一个 entry 的 index。</p>
+<figure class="highlight go"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br></pre></td><td class="code"><pre><span class="line">l.firstIndex = l.segments[<span class="number">0</span>].index</span><br><span class="line"><span class="comment">// Open the last segment for appending</span></span><br><span class="line">lseg := l.segments[<span class="built_in">len</span>(l.segments)<span class="number">-1</span>]</span><br><span class="line">l.sfile, err = os.OpenFile(lseg.path, os.O_WRONLY, l.opts.FilePerms)</span><br><span class="line"><span class="keyword">if</span> err != <span class="literal">nil</span> &#123;</span><br><span class="line">    <span class="keyword">return</span> err</span><br><span class="line">&#125;</span><br><span class="line"><span class="keyword">if</span> _, err := l.sfile.Seek(<span class="number">0</span>, <span class="number">2</span>); err != <span class="literal">nil</span> &#123;</span><br><span class="line">    <span class="keyword">return</span> err</span><br><span class="line">&#125;</span><br><span class="line"><span class="comment">// Load the last segment entries</span></span><br><span class="line"><span class="keyword">if</span> err := l.loadSegmentEntries(lseg); err != <span class="literal">nil</span> &#123;</span><br><span class="line">    <span class="keyword">return</span> err</span><br><span class="line">&#125;</span><br><span class="line">l.lastIndex = lseg.index + <span class="keyword">uint64</span>(<span class="built_in">len</span>(lseg.epos)) - <span class="number">1</span></span><br></pre></td></tr></table></figure>
+<p>到此为止，整个 open 操作都已经完成了，后续对读写操作进行讲解。</p>
+<h3 id="Write"><a href="#Write" class="headerlink" title="Write"></a>Write</h3><p>Write 方法接收 uint64 与 []byte 参数，前者为entry 的index，后者为 entry 的数据。首先需要对 WAL 进行加锁操作，然后判断当前 WAL 状态，决定是否继续之后的操作。状态校验通过之后，则清除 wbatch 中的数据，调用其 write 写入数据到 batch 中，最后调用 Log 的 writeBatch 方法将 batch 中数据写入。</p>
+<figure class="highlight go"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">func</span> <span class="params">(l *Log)</span> <span class="title">Write</span><span class="params">(index <span class="keyword">uint64</span>, data []<span class="keyword">byte</span>)</span> <span class="title">error</span></span> &#123;</span><br><span class="line">	l.mu.Lock()</span><br><span class="line">	<span class="keyword">defer</span> l.mu.Unlock()</span><br><span class="line">	<span class="keyword">if</span> l.corrupt &#123;</span><br><span class="line">		<span class="keyword">return</span> ErrCorrupt</span><br><span class="line">	&#125; <span class="keyword">else</span> <span class="keyword">if</span> l.closed &#123;</span><br><span class="line">		<span class="keyword">return</span> ErrClosed</span><br><span class="line">	&#125;</span><br><span class="line">	l.wbatch.Clear()</span><br><span class="line">	l.wbatch.Write(index, data)</span><br><span class="line">	<span class="keyword">return</span> l.writeBatch(&amp;l.wbatch)</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p> writeBatch 实现并不复杂，先对 tail segment 中的 ebuf 进行校验，如果 ebuf 大小超过了 segmentSize，那么需要创建一个新的 segment。</p>
+<p>然后遍历 batch 中的 entries，并调用 appendEntry 方法追加数据到 tail segment 中的 ebuf 中，appendEntry 会涉及一个序列化操作，采用了 Json 内部调用appendJSONEntry，binary 则调用 appendBinaryEntry。在遍历过程中，每向 ebuf 追加一次数据，那么就会对 ebuf 大小进行校验，判断是否超过了 segmentSize。如果超过将 ebuf 数据写入到 Log sfile ，并更新  lastIndex 与 tail segment。</p>
+<p>遍历完 entries 后，则将 ebuf 中 mark 后面的数据写入到 sfile ，并更新 lastIndex。如果开启了 sync，写入之后需要调用 File 的 sync 方法将缓冲区数据刷新到 disk，最后将 batch 数据清空。</p>
+<figure class="highlight go"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br><span class="line">49</span><br><span class="line">50</span><br><span class="line">51</span><br><span class="line">52</span><br><span class="line">53</span><br><span class="line">54</span><br><span class="line">55</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">func</span> <span class="params">(l *Log)</span> <span class="title">writeBatch</span><span class="params">(b *Batch)</span> <span class="title">error</span></span> &#123;</span><br><span class="line">	<span class="comment">// check that all indexes in batch are sane</span></span><br><span class="line">	<span class="keyword">for</span> i := <span class="number">0</span>; i &lt; <span class="built_in">len</span>(b.entries); i++ &#123;</span><br><span class="line">		<span class="keyword">if</span> b.entries[i].index != l.lastIndex+<span class="keyword">uint64</span>(i+<span class="number">1</span>) &#123;</span><br><span class="line">			<span class="keyword">return</span> ErrOutOfOrder</span><br><span class="line">		&#125;</span><br><span class="line">	&#125;</span><br><span class="line">	<span class="comment">// load the tail segment</span></span><br><span class="line">	s := l.segments[<span class="built_in">len</span>(l.segments)<span class="number">-1</span>]</span><br><span class="line">	<span class="keyword">if</span> <span class="built_in">len</span>(s.ebuf) &gt; l.opts.SegmentSize &#123;</span><br><span class="line">		<span class="comment">// tail segment has reached capacity. Close it and create a new one.</span></span><br><span class="line">		<span class="keyword">if</span> err := l.cycle(); err != <span class="literal">nil</span> &#123;</span><br><span class="line">			<span class="keyword">return</span> err</span><br><span class="line">		&#125;</span><br><span class="line">		s = l.segments[<span class="built_in">len</span>(l.segments)<span class="number">-1</span>]</span><br><span class="line">	&#125;</span><br><span class="line"></span><br><span class="line">	mark := <span class="built_in">len</span>(s.ebuf)</span><br><span class="line">	datas := b.datas</span><br><span class="line">    <span class="comment">// 遍历 entries，并将数据 append 到 ebuf 中</span></span><br><span class="line">	<span class="keyword">for</span> i := <span class="number">0</span>; i &lt; <span class="built_in">len</span>(b.entries); i++ &#123;</span><br><span class="line">		data := datas[:b.entries[i].size]</span><br><span class="line">		<span class="keyword">var</span> epos bpos</span><br><span class="line">		s.ebuf, epos = l.appendEntry(s.ebuf, b.entries[i].index, data)</span><br><span class="line">		s.epos = <span class="built_in">append</span>(s.epos, epos)</span><br><span class="line">		<span class="keyword">if</span> <span class="built_in">len</span>(s.ebuf) &gt;= l.opts.SegmentSize &#123;</span><br><span class="line">			<span class="comment">// segment has reached capacity, cycle now</span></span><br><span class="line">			<span class="keyword">if</span> _, err := l.sfile.Write(s.ebuf[mark:]); err != <span class="literal">nil</span> &#123;</span><br><span class="line">				<span class="keyword">return</span> err</span><br><span class="line">			&#125;</span><br><span class="line">			l.lastIndex = b.entries[i].index</span><br><span class="line">			<span class="keyword">if</span> err := l.cycle(); err != <span class="literal">nil</span> &#123;</span><br><span class="line">				<span class="keyword">return</span> err</span><br><span class="line">			&#125;</span><br><span class="line">			s = l.segments[<span class="built_in">len</span>(l.segments)<span class="number">-1</span>]</span><br><span class="line">			mark = <span class="number">0</span></span><br><span class="line">		&#125;</span><br><span class="line">		datas = datas[b.entries[i].size:]</span><br><span class="line">	&#125;</span><br><span class="line">	<span class="keyword">if</span> <span class="built_in">len</span>(s.ebuf)-mark &gt; <span class="number">0</span> &#123;</span><br><span class="line">        <span class="comment">// 写入数据</span></span><br><span class="line">		<span class="keyword">if</span> _, err := l.sfile.Write(s.ebuf[mark:]); err != <span class="literal">nil</span> &#123;</span><br><span class="line">			<span class="keyword">return</span> err</span><br><span class="line">		&#125;</span><br><span class="line">		l.lastIndex = b.entries[<span class="built_in">len</span>(b.entries)<span class="number">-1</span>].index</span><br><span class="line">	&#125;</span><br><span class="line">    <span class="comment">// 判断是否开启 sync</span></span><br><span class="line">	<span class="keyword">if</span> !l.opts.NoSync &#123;</span><br><span class="line">		<span class="keyword">if</span> err := l.sfile.Sync(); err != <span class="literal">nil</span> &#123;</span><br><span class="line">			<span class="keyword">return</span> err</span><br><span class="line">		&#125;</span><br><span class="line">	&#125;</span><br><span class="line">	b.Clear()</span><br><span class="line">	<span class="keyword">return</span> <span class="literal">nil</span></span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<h3 id="Read"><a href="#Read" class="headerlink" title="Read"></a>Read</h3><p>Read 方法根据 log index 从 WAL 读取对应的数据，该方法内部实现会先获取一把写锁，之后与 Write 方法类似，都会检查 WAL 状态。</p>
+<p>如果 index 等于 0、index 小于 firstIndex、index 大于 lastIndex，这三个条件满足一者，那么该方法会直接 return，并返回 ErrNotFound 错误。</p>
+<p>调用 loadSegment 方法，首先从 Log LRU 中找到对应的 segment。倘若未找到，那么调用 findSegment 方法根据 index 从 segments 中进行二分查找，找到后则从 disk 读取 segment 数据，数据会被读取到 segment 中的 ebuf 中，并维护 segment 中的 epos 索引，最后将 segment 添加到 Log LRU 中。</p>
+<p>获取到 index 对应的 segment 后，根据 index 从 segment 的 epos 索引获取到该 entry 在 ebuf 中的 start position 与 end position，从 ebuf 拿到 log entry 数据后，如果采用 Json 序列化方式，那么使用 readJson 进行读取，binary 则不进行额外操作。</p>
+<p>要是 WAL 开启了 NoCopy，return 的 data 则是 ebuf 的分片，这种设计虽然减少内存开辟和释放，但用户对该 ebuf 分片的数据进行修改，则会影响后续读取到的数据准确性。</p>
+<figure class="highlight go"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">func</span> <span class="params">(l *Log)</span> <span class="title">Read</span><span class="params">(index <span class="keyword">uint64</span>)</span> <span class="params">(data []<span class="keyword">byte</span>, err error)</span></span> &#123;</span><br><span class="line">   l.mu.RLock()</span><br><span class="line">   <span class="keyword">defer</span> l.mu.RUnlock()</span><br><span class="line">   <span class="keyword">if</span> l.corrupt &#123;</span><br><span class="line">      <span class="keyword">return</span> <span class="literal">nil</span>, ErrCorrupt</span><br><span class="line">   &#125; <span class="keyword">else</span> <span class="keyword">if</span> l.closed &#123;</span><br><span class="line">      <span class="keyword">return</span> <span class="literal">nil</span>, ErrClosed</span><br><span class="line">   &#125;</span><br><span class="line">   <span class="keyword">if</span> index == <span class="number">0</span> || index &lt; l.firstIndex || index &gt; l.lastIndex &#123;</span><br><span class="line">      <span class="keyword">return</span> <span class="literal">nil</span>, ErrNotFound</span><br><span class="line">   &#125;</span><br><span class="line">   <span class="comment">// 根据 index 加载 segment</span></span><br><span class="line">   s, err := l.loadSegment(index)</span><br><span class="line">   <span class="keyword">if</span> err != <span class="literal">nil</span> &#123;</span><br><span class="line">      <span class="keyword">return</span> <span class="literal">nil</span>, err</span><br><span class="line">   &#125;</span><br><span class="line">   <span class="comment">// 根据 index 从 epos 获取该 entry 的 start 与 end</span></span><br><span class="line">   epos := s.epos[index-s.index]</span><br><span class="line">   edata := s.ebuf[epos.pos:epos.end]</span><br><span class="line">   <span class="comment">// json 序列化</span></span><br><span class="line">   <span class="keyword">if</span> l.opts.LogFormat == JSON &#123;</span><br><span class="line">      <span class="keyword">return</span> readJSON(edata)</span><br><span class="line">   &#125;</span><br><span class="line">   <span class="comment">// binary read</span></span><br><span class="line">   size, n := binary.Uvarint(edata)</span><br><span class="line">   <span class="keyword">if</span> n &lt;= <span class="number">0</span> &#123;</span><br><span class="line">      <span class="keyword">return</span> <span class="literal">nil</span>, ErrCorrupt</span><br><span class="line">   &#125;</span><br><span class="line">   <span class="keyword">if</span> <span class="keyword">uint64</span>(<span class="built_in">len</span>(edata)-n) &lt; size &#123;</span><br><span class="line">      <span class="keyword">return</span> <span class="literal">nil</span>, ErrCorrupt</span><br><span class="line">   &#125;</span><br><span class="line">   <span class="keyword">if</span> l.opts.NoCopy &#123;</span><br><span class="line">      data = edata[n : <span class="keyword">uint64</span>(n)+size]</span><br><span class="line">   &#125; <span class="keyword">else</span> &#123;</span><br><span class="line">      data = <span class="built_in">make</span>([]<span class="keyword">byte</span>, size)</span><br><span class="line">      <span class="built_in">copy</span>(data, edata[n:])</span><br><span class="line">   &#125;</span><br><span class="line">   <span class="keyword">return</span> data, <span class="literal">nil</span></span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+
+<h3 id="GC-操作"><a href="#GC-操作" class="headerlink" title="GC 操作"></a>GC 操作</h3><p>对 WAL 进行 GC 操作，只需要删除指定 index 之前的 log，并生成新的 segment，在 Golang WAL 中提供了两个截断操作。</p>
+<ol>
+<li>TruncateFront：删除 index 之前的 log，使得 index 处的 log 成为第一个 log</li>
+<li>TruncateBack：删除 index 之后的 log，使得 index 处的 log 成为最后一个 log</li>
+</ol>
+<p>下面对 TruncateFront 实现逻辑进行分析，因为 TruncateBack 不太常用，在 WAL 中一般都是删除指定 index 之前的 log，从而来达到释放存储空间目的。</p>
+<p>在 TruncateFront  中，首先获取获取锁，对 WAL 状态校验后，则调用内部的 truncateFront 方法。</p>
+<figure class="highlight go"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">func</span> <span class="params">(l *Log)</span> <span class="title">TruncateFront</span><span class="params">(index <span class="keyword">uint64</span>)</span> <span class="title">error</span></span> &#123;</span><br><span class="line">	l.mu.Lock()</span><br><span class="line">	<span class="keyword">defer</span> l.mu.Unlock()</span><br><span class="line">	<span class="keyword">if</span> l.corrupt &#123;</span><br><span class="line">		<span class="keyword">return</span> ErrCorrupt</span><br><span class="line">	&#125; <span class="keyword">else</span> <span class="keyword">if</span> l.closed &#123;</span><br><span class="line">		<span class="keyword">return</span> ErrClosed</span><br><span class="line">	&#125;</span><br><span class="line">	<span class="keyword">return</span> l.truncateFront(index)</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>截断 index 之前的 log，首先需要获取到 index 对应的 segment后，创建一个 temp 文件来存储该 segment index 之后的 log，将该 temp 文件重命名为 .START 结尾文件，然后删除从 disk 删除所有被截断的 segment，如果删除期间发生错误，后续 open 操作时，可以根据 .START 标志找到 WAL 开始点，从而来舍弃之前的 segment。反之，删除成功后，则将 .START 重名为 20 个字符的 index 名。</p>
+<p>之前是对 disk 进行更新，现在则对内存记录进行更新，该操作从 segments 删除 index 之前所有的 segment。最后在进行一些收尾工作，首先清除 Log 的 LRU Cache，然后更新 Log 中的 firstIndex 为传入的 index。</p>
+<figure class="highlight go"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br><span class="line">49</span><br><span class="line">50</span><br><span class="line">51</span><br><span class="line">52</span><br><span class="line">53</span><br><span class="line">54</span><br><span class="line">55</span><br><span class="line">56</span><br><span class="line">57</span><br><span class="line">58</span><br><span class="line">59</span><br><span class="line">60</span><br><span class="line">61</span><br><span class="line">62</span><br><span class="line">63</span><br><span class="line">64</span><br><span class="line">65</span><br><span class="line">66</span><br><span class="line">67</span><br><span class="line">68</span><br><span class="line">69</span><br><span class="line">70</span><br><span class="line">71</span><br><span class="line">72</span><br><span class="line">73</span><br><span class="line">74</span><br><span class="line">75</span><br><span class="line">76</span><br><span class="line">77</span><br><span class="line">78</span><br><span class="line">79</span><br><span class="line">80</span><br><span class="line">81</span><br><span class="line">82</span><br><span class="line">83</span><br><span class="line">84</span><br><span class="line">85</span><br><span class="line">86</span><br><span class="line">87</span><br><span class="line">88</span><br><span class="line">89</span><br><span class="line">90</span><br><span class="line">91</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">func</span> <span class="params">(l *Log)</span> <span class="title">truncateFront</span><span class="params">(index <span class="keyword">uint64</span>)</span> <span class="params">(err error)</span></span> &#123;</span><br><span class="line">	<span class="keyword">if</span> index == <span class="number">0</span> || l.lastIndex == <span class="number">0</span> ||</span><br><span class="line">		index &lt; l.firstIndex || index &gt; l.lastIndex &#123;</span><br><span class="line">		<span class="keyword">return</span> ErrOutOfRange</span><br><span class="line">	&#125;</span><br><span class="line">	<span class="keyword">if</span> index == l.firstIndex &#123;</span><br><span class="line">		<span class="comment">// nothing to truncate</span></span><br><span class="line">		<span class="keyword">return</span> <span class="literal">nil</span></span><br><span class="line">	&#125;</span><br><span class="line">	segIdx := l.findSegment(index)</span><br><span class="line">	<span class="keyword">var</span> s *segment</span><br><span class="line">	s, err = l.loadSegment(index)</span><br><span class="line">	<span class="keyword">if</span> err != <span class="literal">nil</span> &#123;</span><br><span class="line">		<span class="keyword">return</span> err</span><br><span class="line">	&#125;</span><br><span class="line">	epos := s.epos[index-s.index:]</span><br><span class="line">	ebuf := s.ebuf[epos[<span class="number">0</span>].pos:]</span><br><span class="line">	<span class="comment">// Create a temp file contains the truncated segment.</span></span><br><span class="line">	tempName := filepath.Join(l.path, <span class="string">&quot;TEMP&quot;</span>)</span><br><span class="line">	err = <span class="function"><span class="keyword">func</span><span class="params">()</span> <span class="title">error</span></span> &#123;</span><br><span class="line">		f, err := os.OpenFile(tempName, os.O_CREATE|os.O_RDWR|os.O_TRUNC, l.opts.FilePerms)</span><br><span class="line">		<span class="keyword">if</span> err != <span class="literal">nil</span> &#123;</span><br><span class="line">			<span class="keyword">return</span> err</span><br><span class="line">		&#125;</span><br><span class="line">		<span class="keyword">defer</span> f.Close()</span><br><span class="line">		<span class="keyword">if</span> _, err := f.Write(ebuf); err != <span class="literal">nil</span> &#123;</span><br><span class="line">			<span class="keyword">return</span> err</span><br><span class="line">		&#125;</span><br><span class="line">		<span class="keyword">if</span> err := f.Sync(); err != <span class="literal">nil</span> &#123;</span><br><span class="line">			<span class="keyword">return</span> err</span><br><span class="line">		&#125;</span><br><span class="line">		<span class="keyword">return</span> f.Close()</span><br><span class="line">	&#125;()</span><br><span class="line">	<span class="comment">// Rename the TEMP file to it&#x27;s START file name.</span></span><br><span class="line">	startName := filepath.Join(l.path, segmentName(index)+<span class="string">&quot;.START&quot;</span>)</span><br><span class="line">	<span class="keyword">if</span> err = os.Rename(tempName, startName); err != <span class="literal">nil</span> &#123;</span><br><span class="line">		<span class="keyword">return</span> err</span><br><span class="line">	&#125;</span><br><span class="line">	<span class="comment">// The log was truncated but still needs some file cleanup. Any errors</span></span><br><span class="line">	<span class="comment">// following this message will not cause an on-disk data ocorruption, but</span></span><br><span class="line">	<span class="comment">// may cause an inconsistency with the current program, so we&#x27;ll return</span></span><br><span class="line">	<span class="comment">// ErrCorrupt so the the user can attempt a recover by calling Close()</span></span><br><span class="line">	<span class="comment">// followed by Open().</span></span><br><span class="line">	<span class="keyword">defer</span> <span class="function"><span class="keyword">func</span><span class="params">()</span></span> &#123;</span><br><span class="line">		<span class="keyword">if</span> v := <span class="built_in">recover</span>(); v != <span class="literal">nil</span> &#123;</span><br><span class="line">			err = ErrCorrupt</span><br><span class="line">			l.corrupt = <span class="literal">true</span></span><br><span class="line">		&#125;</span><br><span class="line">	&#125;()</span><br><span class="line">	<span class="keyword">if</span> segIdx == <span class="built_in">len</span>(l.segments)<span class="number">-1</span> &#123;</span><br><span class="line">		<span class="comment">// Close the tail segment file</span></span><br><span class="line">		<span class="keyword">if</span> err = l.sfile.Close(); err != <span class="literal">nil</span> &#123;</span><br><span class="line">			<span class="keyword">return</span> err</span><br><span class="line">		&#125;</span><br><span class="line">	&#125;</span><br><span class="line">	<span class="comment">// Delete truncated segment files</span></span><br><span class="line">	<span class="keyword">for</span> i := <span class="number">0</span>; i &lt;= segIdx; i++ &#123;</span><br><span class="line">		<span class="keyword">if</span> err = os.Remove(l.segments[i].path); err != <span class="literal">nil</span> &#123;</span><br><span class="line">			<span class="keyword">return</span> err</span><br><span class="line">		&#125;</span><br><span class="line">	&#125;</span><br><span class="line">	<span class="comment">// Rename the START file to the final truncated segment name.</span></span><br><span class="line">	newName := filepath.Join(l.path, segmentName(index))</span><br><span class="line">	<span class="keyword">if</span> err = os.Rename(startName, newName); err != <span class="literal">nil</span> &#123;</span><br><span class="line">		<span class="keyword">return</span> err</span><br><span class="line">	&#125;</span><br><span class="line">	s.path = newName</span><br><span class="line">	s.index = index</span><br><span class="line">	<span class="keyword">if</span> segIdx == <span class="built_in">len</span>(l.segments)<span class="number">-1</span> &#123;</span><br><span class="line">		<span class="comment">// Reopen the tail segment file</span></span><br><span class="line">		<span class="keyword">if</span> l.sfile, err = os.OpenFile(newName, os.O_WRONLY, l.opts.FilePerms); err != <span class="literal">nil</span> &#123;</span><br><span class="line">			<span class="keyword">return</span> err</span><br><span class="line">		&#125;</span><br><span class="line">		<span class="keyword">var</span> n <span class="keyword">int64</span></span><br><span class="line">		<span class="keyword">if</span> n, err = l.sfile.Seek(<span class="number">0</span>, <span class="number">2</span>); err != <span class="literal">nil</span> &#123;</span><br><span class="line">			<span class="keyword">return</span> err</span><br><span class="line">		&#125;</span><br><span class="line">		<span class="keyword">if</span> n != <span class="keyword">int64</span>(<span class="built_in">len</span>(ebuf)) &#123;</span><br><span class="line">			err = errors.New(<span class="string">&quot;invalid seek&quot;</span>)</span><br><span class="line">			<span class="keyword">return</span> err</span><br><span class="line">		&#125;</span><br><span class="line">		<span class="comment">// Load the last segment entries</span></span><br><span class="line">		<span class="keyword">if</span> err = l.loadSegmentEntries(s); err != <span class="literal">nil</span> &#123;</span><br><span class="line">			<span class="keyword">return</span> err</span><br><span class="line">		&#125;</span><br><span class="line">	&#125;</span><br><span class="line">	l.segments = <span class="built_in">append</span>([]*segment&#123;&#125;, l.segments[segIdx:]...)</span><br><span class="line">	l.firstIndex = index</span><br><span class="line">	l.clearCache()</span><br><span class="line">	<span class="keyword">return</span> <span class="literal">nil</span></span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>对于垃圾回收实现可谓是百家争鸣，但作为通用的 WAL 库，golang-wal 垃圾回收是一个很好的设计。在 leveldb 中，该项目内部实现了自己的 WAL，每个 MemTable 对应了一个 WAL 文件，后续将 memtable 转成 immuttable，最后落盘成 SSTable，才将原先的 WAL 删除，从而实现垃圾回收。</p>
+<h2 id="参考文档"><a href="#参考文档" class="headerlink" title="参考文档"></a>参考文档</h2><ol>
+<li><a target="_blank" rel="noopener" href="https://github.com/tidwall/wal">Golang WAL</a></li>
+<li><a target="_blank" rel="noopener" href="https://github.com/syndtr/goleveldb">goleveldb</a></li>
+</ol>
+
+    </div>
+
+    
+    
+    
+
+      <footer class="post-footer">
+          <div class="post-tags">
+              <a href="/tags/WAL/" <i class="fa fa-tag"></i>WAL</a>
+              <a href="/tags/Design/" <i class="fa fa-tag"></i>Design</a>
+          </div>
+
+        
+
+
+        
+    <div class="post-nav">
+      <div class="post-nav-item">
+    <a href="/2022/01/25/%E5%A6%82%E4%BD%95%E5%AE%9E%E7%8E%B0%E6%97%A5%E5%BF%97%E6%A1%86%E6%9E%B6/" rel="prev" title="如何实现日志框架">
+      <i class="fa fa-chevron-left"></i> 如何实现日志框架
+    </a></div>
+      <div class="post-nav-item">
+    <a href="/2022/01/29/ja-netfilter-%E8%AE%BE%E8%AE%A1%E4%B8%8E%E5%AE%9E%E7%8E%B0/" rel="next" title="ja-netfilter 设计与实现">
+      ja-netfilter 设计与实现 <i class="fa fa-chevron-right"></i>
+    </a></div>
+    </div>
+      </footer>
+    
+  </article>
+  
+  
+  
+
+
+
+          </div>
+          
+
+<script>
+  window.addEventListener('tabs:register', () => {
+    let { activeClass } = CONFIG.comments;
+    if (CONFIG.comments.storage) {
+      activeClass = localStorage.getItem('comments_active') || activeClass;
+    }
+    if (activeClass) {
+      let activeTab = document.querySelector(`a[href="#comment-${activeClass}"]`);
+      if (activeTab) {
+        activeTab.click();
+      }
+    }
+  });
+  if (CONFIG.comments.storage) {
+    window.addEventListener('tabs:click', event => {
+      if (!event.target.matches('.tabs-comment .tab-content .tab-pane')) return;
+      let commentClass = event.target.classList[1];
+      localStorage.setItem('comments_active', commentClass);
+    });
+  }
+</script>
+
+        </div>
+          
+  
+  <div class="toggle sidebar-toggle">
+    <span class="toggle-line toggle-line-first"></span>
+    <span class="toggle-line toggle-line-middle"></span>
+    <span class="toggle-line toggle-line-last"></span>
+  </div>
+
+  <aside class="sidebar">
+    <div class="sidebar-inner">
+
+      <ul class="sidebar-nav motion-element">
+        <li class="sidebar-nav-toc">
+          文章目录
+        </li>
+        <li class="sidebar-nav-overview">
+          站点概览
+        </li>
+      </ul>
+
+      <!--noindex-->
+      <div class="post-toc-wrap sidebar-panel">
+          <div class="post-toc motion-element"><ol class="nav"><li class="nav-item nav-level-2"><a class="nav-link" href="#%E9%9C%80%E6%B1%82%E5%88%86%E6%9E%90"><span class="nav-number">1.</span> <span class="nav-text">需求分析</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#Struct-%E8%AE%BE%E8%AE%A1"><span class="nav-number">2.</span> <span class="nav-text">Struct 设计</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E6%BA%90%E7%A0%81%E9%98%85%E8%AF%BB"><span class="nav-number">3.</span> <span class="nav-text">源码阅读</span></a><ol class="nav-child"><li class="nav-item nav-level-3"><a class="nav-link" href="#Open"><span class="nav-number">3.1.</span> <span class="nav-text">Open</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#Write"><span class="nav-number">3.2.</span> <span class="nav-text">Write</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#Read"><span class="nav-number">3.3.</span> <span class="nav-text">Read</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#GC-%E6%93%8D%E4%BD%9C"><span class="nav-number">3.4.</span> <span class="nav-text">GC 操作</span></a></li></ol></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E5%8F%82%E8%80%83%E6%96%87%E6%A1%A3"><span class="nav-number">4.</span> <span class="nav-text">参考文档</span></a></li></ol></div>
+      </div>
+      <!--/noindex-->
+
+      <div class="site-overview-wrap sidebar-panel">
+        <div class="site-author motion-element" itemprop="author" itemscope itemtype="http://schema.org/Person">
+    <img class="site-author-image" itemprop="image" alt="predicate"
+      src="/images/avatar.jpg">
+  <p class="site-author-name" itemprop="name">predicate</p>
+  <div class="site-description" itemprop="description">因为热爱，所以坚持。</div>
+</div>
+<div class="site-state-wrap motion-element">
+  <nav class="site-state">
+      <div class="site-state-item site-state-posts">
+          <a href="/archives/">
+        
+          <span class="site-state-item-count">21</span>
+          <span class="site-state-item-name">日志</span>
+        </a>
+      </div>
+      <div class="site-state-item site-state-categories">
+            <a href="/categories/">
+          
+        <span class="site-state-item-count">13</span>
+        <span class="site-state-item-name">分类</span></a>
+      </div>
+      <div class="site-state-item site-state-tags">
+            <a href="/tags/">
+          
+        <span class="site-state-item-count">27</span>
+        <span class="site-state-item-name">标签</span></a>
+      </div>
+  </nav>
+</div>
+  <div class="links-of-author motion-element">
+      <span class="links-of-author-item">
+        <a href="https://github.com/killlowkey" title="GitHub → https:&#x2F;&#x2F;github.com&#x2F;killlowkey" rel="noopener" target="_blank"><i class="fa fa-fw fa-github"></i>GitHub</a>
+      </span>
+  </div>
+
+
+
+      </div>
+
+    </div>
+  </aside>
+  <div id="sidebar-dimmer"></div>
+
+
+      </div>
+    </main>
+
+    <footer class="footer">
+      <div class="footer-inner">
+        
+
+        
+
+<div class="copyright">
+  
+  &copy; 
+  <span itemprop="copyrightYear">2022</span>
+  <span class="with-love">
+    <i class="fa fa-user"></i>
+  </span>
+  <span class="author" itemprop="copyrightHolder">predicate</span>
+</div>
+  <div class="powered-by">由 <a href="https://hexo.io/" class="theme-link" rel="noopener" target="_blank">Hexo</a> & <a href="https://theme-next.org/" class="theme-link" rel="noopener" target="_blank">NexT.Gemini</a> 强力驱动
+  </div>
+
+        
+
+
+
+
+
+
+
+
+      </div>
+    </footer>
+  </div>
+
+  
+  <script src="/lib/anime.min.js"></script>
+  <script src="/lib/velocity/velocity.min.js"></script>
+  <script src="/lib/velocity/velocity.ui.min.js"></script>
+
+<script src="/js/utils.js"></script>
+
+<script src="/js/motion.js"></script>
+
+
+<script src="/js/schemes/pisces.js"></script>
+
+
+<script src="/js/next-boot.js"></script>
+
+
+
+
+  
+
+
+
+
+  
+<script src="/js/local-search.js"></script>
+
+
+
+
+
+
+
+
+
+
+
+
+
+  
+
+  
+
+</body>
+</html>

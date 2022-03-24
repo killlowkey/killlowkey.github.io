@@ -1,0 +1,572 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=2">
+<meta name="theme-color" content="#222">
+<meta name="generator" content="Hexo 5.3.0">
+  <link rel="apple-touch-icon" sizes="180x180" href="/images/apple-touch-icon-next.png">
+  <link rel="icon" type="image/png" sizes="32x32" href="/images/favicon-32x32-next.png">
+  <link rel="icon" type="image/png" sizes="16x16" href="/images/favicon-16x16-next.png">
+  <link rel="mask-icon" href="/images/logo.svg" color="#222">
+
+<link rel="stylesheet" href="/css/main.css">
+
+
+<link rel="stylesheet" href="/lib/font-awesome/css/font-awesome.min.css">
+
+<script id="hexo-configurations">
+    var NexT = window.NexT || {};
+    var CONFIG = {"hostname":"example.com","root":"/","scheme":"Gemini","version":"7.8.0","exturl":false,"sidebar":{"position":"left","display":"post","padding":18,"offset":12,"onmobile":false},"copycode":{"enable":false,"show_result":false,"style":null},"back2top":{"enable":true,"sidebar":false,"scrollpercent":false},"bookmark":{"enable":false,"color":"#222","save":"auto"},"fancybox":false,"mediumzoom":false,"lazyload":false,"pangu":false,"comments":{"style":"tabs","active":null,"storage":true,"lazyload":false,"nav":null},"algolia":{"hits":{"per_page":10},"labels":{"input_placeholder":"Search for Posts","hits_empty":"We didn't find any results for the search: ${query}","hits_stats":"${hits} results found in ${time} ms"}},"localsearch":{"enable":true,"trigger":"auto","top_n_per_article":1,"unescape":false,"preload":false},"motion":{"enable":true,"async":false,"transition":{"post_block":"fadeIn","post_header":"slideDownIn","post_body":"slideDownIn","coll_header":"slideLeftIn","sidebar":"slideUpIn"}},"path":"search.xml"};
+  </script>
+
+  <meta name="description" content="定义并实例化 structstruct 中文名称是 结构体，可以自定义数据类型，为相关联的值命名，并打包成有意义的组合 定义 struct 使用 struct 关键字，并为整个 struct 命名 在花括号内，为所有字段（Field）定义名称与类型">
+<meta property="og:type" content="article">
+<meta property="og:title" content="Rust 学习笔记：第5章 struct">
+<meta property="og:url" content="http://example.com/2021/06/09/Rust-%E5%AD%A6%E4%B9%A0%E7%AC%94%E8%AE%B0%EF%BC%9A%E7%AC%AC5%E7%AB%A0-struct/index.html">
+<meta property="og:site_name" content="predicate | blog">
+<meta property="og:description" content="定义并实例化 structstruct 中文名称是 结构体，可以自定义数据类型，为相关联的值命名，并打包成有意义的组合 定义 struct 使用 struct 关键字，并为整个 struct 命名 在花括号内，为所有字段（Field）定义名称与类型">
+<meta property="og:locale" content="zh_CN">
+<meta property="article:published_time" content="2021-06-09T03:11:00.000Z">
+<meta property="article:modified_time" content="2022-03-24T04:57:14.180Z">
+<meta property="article:author" content="predicate">
+<meta property="article:tag" content="Rust">
+<meta property="article:tag" content="Rust 学习笔记">
+<meta name="twitter:card" content="summary">
+
+<link rel="canonical" href="http://example.com/2021/06/09/Rust-%E5%AD%A6%E4%B9%A0%E7%AC%94%E8%AE%B0%EF%BC%9A%E7%AC%AC5%E7%AB%A0-struct/">
+
+
+<script id="page-configurations">
+  // https://hexo.io/docs/variables.html
+  CONFIG.page = {
+    sidebar: "",
+    isHome : false,
+    isPost : true,
+    lang   : 'zh-CN'
+  };
+</script>
+
+  <title>Rust 学习笔记：第5章 struct | predicate | blog</title>
+  
+
+
+
+
+
+
+  <noscript>
+  <style>
+  .use-motion .brand,
+  .use-motion .menu-item,
+  .sidebar-inner,
+  .use-motion .post-block,
+  .use-motion .pagination,
+  .use-motion .comments,
+  .use-motion .post-header,
+  .use-motion .post-body,
+  .use-motion .collection-header { opacity: initial; }
+
+  .use-motion .site-title,
+  .use-motion .site-subtitle {
+    opacity: initial;
+    top: initial;
+  }
+
+  .use-motion .logo-line-before i { left: initial; }
+  .use-motion .logo-line-after i { right: initial; }
+  </style>
+</noscript>
+
+</head>
+
+<body itemscope itemtype="http://schema.org/WebPage">
+  <div class="container use-motion">
+    <div class="headband"></div>
+
+    <header class="header" itemscope itemtype="http://schema.org/WPHeader">
+      <div class="header-inner"><div class="site-brand-container">
+  <div class="site-nav-toggle">
+    <div class="toggle" aria-label="切换导航栏">
+      <span class="toggle-line toggle-line-first"></span>
+      <span class="toggle-line toggle-line-middle"></span>
+      <span class="toggle-line toggle-line-last"></span>
+    </div>
+  </div>
+
+  <div class="site-meta">
+
+    <a href="/" class="brand" rel="start">
+      <span class="logo-line-before"><i></i></span>
+      <h1 class="site-title">predicate | blog</h1>
+      <span class="logo-line-after"><i></i></span>
+    </a>
+      <p class="site-subtitle" itemprop="description">你好，世界！</p>
+  </div>
+
+  <div class="site-nav-right">
+    <div class="toggle popup-trigger">
+        <i class="fa fa-search fa-fw fa-lg"></i>
+    </div>
+  </div>
+</div>
+
+
+
+
+<nav class="site-nav">
+  <ul id="menu" class="menu">
+        <li class="menu-item menu-item-home">
+
+    <a href="/" rel="section"><i class="fa fa-fw fa-home"></i>首页</a>
+
+  </li>
+        <li class="menu-item menu-item-categories">
+
+    <a href="/categories/" rel="section"><i class="fa fa-fw fa-th"></i>分类</a>
+
+  </li>
+        <li class="menu-item menu-item-tags">
+
+    <a href="/tags/" rel="section"><i class="fa fa-fw fa-tags"></i>标签</a>
+
+  </li>
+        <li class="menu-item menu-item-archives">
+
+    <a href="/archives/" rel="section"><i class="fa fa-fw fa-archive"></i>归档</a>
+
+  </li>
+      <li class="menu-item menu-item-search">
+        <a role="button" class="popup-trigger"><i class="fa fa-search fa-fw"></i>搜索
+        </a>
+      </li>
+  </ul>
+</nav>
+
+
+
+  <div class="search-pop-overlay">
+    <div class="popup search-popup">
+        <div class="search-header">
+  <span class="search-icon">
+    <i class="fa fa-search"></i>
+  </span>
+  <div class="search-input-container">
+    <input autocomplete="off" autocapitalize="off"
+           placeholder="搜索..." spellcheck="false"
+           type="search" class="search-input">
+  </div>
+  <span class="popup-btn-close">
+    <i class="fa fa-times-circle"></i>
+  </span>
+</div>
+<div id="search-result">
+  <div id="no-result">
+    <i class="fa fa-spinner fa-pulse fa-5x fa-fw"></i>
+  </div>
+</div>
+
+    </div>
+  </div>
+
+</div>
+    </header>
+
+    
+  <div class="back-to-top">
+    <i class="fa fa-arrow-up"></i>
+    <span>0%</span>
+  </div>
+
+
+    <main class="main">
+      <div class="main-inner">
+        <div class="content-wrap">
+          
+
+          <div class="content post posts-expand">
+            
+
+    
+  
+  
+  <article itemscope itemtype="http://schema.org/Article" class="post-block" lang="zh-CN">
+    <link itemprop="mainEntityOfPage" href="http://example.com/2021/06/09/Rust-%E5%AD%A6%E4%B9%A0%E7%AC%94%E8%AE%B0%EF%BC%9A%E7%AC%AC5%E7%AB%A0-struct/">
+
+    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
+      <meta itemprop="image" content="/images/avatar.jpg">
+      <meta itemprop="name" content="predicate">
+      <meta itemprop="description" content="因为热爱，所以坚持。">
+    </span>
+
+    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
+      <meta itemprop="name" content="predicate | blog">
+    </span>
+      <header class="post-header">
+        <h1 class="post-title" itemprop="name headline">
+          Rust 学习笔记：第5章 struct
+        </h1>
+
+        <div class="post-meta">
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="fa fa-calendar-o"></i>
+              </span>
+              <span class="post-meta-item-text">发表于</span>
+
+              <time title="创建时间：2021-06-09 11:11:00" itemprop="dateCreated datePublished" datetime="2021-06-09T11:11:00+08:00">2021-06-09</time>
+            </span>
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="fa fa-folder-o"></i>
+              </span>
+              <span class="post-meta-item-text">分类于</span>
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
+                  <a href="/categories/Rust/" itemprop="url" rel="index"><span itemprop="name">Rust</span></a>
+                </span>
+            </span>
+
+          
+
+        </div>
+      </header>
+
+    
+    
+    
+    <div class="post-body" itemprop="articleBody">
+
+      
+        <h2 id="定义并实例化-struct"><a href="#定义并实例化-struct" class="headerlink" title="定义并实例化 struct"></a>定义并实例化 struct</h2><p>struct 中文名称是 结构体，可以自定义数据类型，为相关联的值命名，并打包成有意义的组合</p>
+<h3 id="定义-struct"><a href="#定义-struct" class="headerlink" title="定义 struct"></a>定义 struct</h3><ul>
+<li>使用 <code>struct</code> 关键字，并为整个 struct 命名</li>
+<li>在花括号内，为所有字段（Field）定义名称与类型<a id="more"></a>
+
+</li>
+</ul>
+<figure class="highlight rust"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br></pre></td><td class="code"><pre><span class="line"><span class="class"><span class="keyword">struct</span> <span class="title">User</span></span> &#123;</span><br><span class="line">    username: <span class="built_in">String</span>,</span><br><span class="line">    email: <span class="built_in">String</span>,</span><br><span class="line">    sign_in_count: <span class="built_in">u64</span>,</span><br><span class="line">    active: <span class="built_in">bool</span>,</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<h3 id="实例化-struct"><a href="#实例化-struct" class="headerlink" title="实例化 struct"></a>实例化 struct</h3><ul>
+<li>想要使用 struct，需要创建 struct 的实例<ul>
+<li>为每个字段指定具体值</li>
+<li>无需按声明的顺序进行指定</li>
+</ul>
+</li>
+</ul>
+<figure class="highlight rust"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">let</span> user1 = User&#123;</span><br><span class="line">    email: <span class="built_in">String</span>::from(<span class="string">&quot;some@example.com&quot;</span>),</span><br><span class="line">    usernmae: <span class="built_in">String</span>::from(<span class="string">&quot;someusernmae123&quot;</span>),</span><br><span class="line">    active: <span class="literal">true</span>,</span><br><span class="line">    sign_in_count: <span class="number">1</span>,</span><br><span class="line">&#125;;</span><br></pre></td></tr></table></figure>
+<h3 id="取得-struct-里面某个值"><a href="#取得-struct-里面某个值" class="headerlink" title="取得 struct 里面某个值"></a>取得 struct 里面某个值</h3><ul>
+<li>使用点标记法</li>
+</ul>
+<p>为 user 的某个字段赋予新值，需要在实例化时为 user 加上 <code>mut</code> 关键字，然后使用点标记就可以赋值</p>
+<blockquote>
+<p>一旦 struct 的实例是可变的，那么实例中所有的字段都是可变的</p>
+</blockquote>
+<figure class="highlight rust"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">let</span> <span class="keyword">mut</span> user1 = User&#123;</span><br><span class="line">    email: <span class="built_in">String</span>::from(<span class="string">&quot;some@example.com&quot;</span>),</span><br><span class="line">    usernmae: <span class="built_in">String</span>::from(<span class="string">&quot;someusernmae123&quot;</span>),</span><br><span class="line">    active: <span class="literal">true</span>,</span><br><span class="line">    sign_in_count: <span class="number">1</span>,</span><br><span class="line">&#125;;</span><br><span class="line"></span><br><span class="line">user1.email = <span class="built_in">String</span>::from(<span class="string">&quot;anotheremail@example.com&quot;</span>);</span><br></pre></td></tr></table></figure>
+<h3 id="struct-作为函数的返回值"><a href="#struct-作为函数的返回值" class="headerlink" title="struct 作为函数的返回值"></a>struct 作为函数的返回值</h3><figure class="highlight rust"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">fn</span> <span class="title">build_user</span></span>(email: <span class="built_in">String</span>, username: <span class="built_in">String</span>) -&gt; User &#123;</span><br><span class="line">    User&#123;</span><br><span class="line">        email: email,</span><br><span class="line">        usernmae: username,</span><br><span class="line">        active: <span class="literal">true</span>,</span><br><span class="line">        sign_in_count: <span class="number">1</span>,</span><br><span class="line">    &#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<h3 id="字段初始化简写"><a href="#字段初始化简写" class="headerlink" title="字段初始化简写"></a>字段初始化简写</h3><ul>
+<li>当字段名与字段值对应变量相同时，就可以使用该字段初始化简写方式</li>
+</ul>
+<figure class="highlight rust"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">fn</span> <span class="title">build_user</span></span>(email: <span class="built_in">String</span>, usernmae: <span class="built_in">String</span>) -&gt; User &#123;</span><br><span class="line">    User&#123;</span><br><span class="line">        email,</span><br><span class="line">        username,</span><br><span class="line">        active: <span class="literal">true</span>,</span><br><span class="line">        sign_in_count: <span class="number">1</span>,</span><br><span class="line">    &#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<h3 id="struct-更新语法"><a href="#struct-更新语法" class="headerlink" title="struct 更新语法"></a>struct 更新语法</h3><ul>
+<li>当你基于某个 struct 实例来创建一个新实例的时候，可以使用 struct 更新语法</li>
+</ul>
+<blockquote>
+<p>不使用更新语法</p>
+</blockquote>
+<figure class="highlight rust"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">let</span> user2 = User&#123;</span><br><span class="line">    email: <span class="built_in">String</span>::from(<span class="string">&quot;another@axmple.com&quot;</span>),</span><br><span class="line">    username: <span class="built_in">String</span>::from(<span class="string">&quot;anotherusername567&quot;</span>),</span><br><span class="line">    active: user1.active,</span><br><span class="line">    sign_in_count: user1.sign_in_count,</span><br><span class="line">&#125;;</span><br></pre></td></tr></table></figure>
+<blockquote>
+<p>使用更新语法</p>
+</blockquote>
+<figure class="highlight rust"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">let</span> user2 = User &#123;</span><br><span class="line">    email: <span class="built_in">String</span>::from(<span class="string">&quot;another@axmple.com&quot;</span>),</span><br><span class="line">    username: <span class="built_in">String</span>::from(<span class="string">&quot;anotherusername567&quot;</span>),</span><br><span class="line">    ..user1</span><br><span class="line">&#125;;</span><br></pre></td></tr></table></figure>
+<h3 id="Tuple-struct"><a href="#Tuple-struct" class="headerlink" title="Tuple struct"></a>Tuple struct</h3><ul>
+<li>可定义类似 tuple 的 struct，叫做 tuple struct<ul>
+<li>tuple struct 整体有个名，但里面的元素没有名</li>
+<li>适用：想给整个 tuple 起名，并让它不同于其它 tuple，而且又不需要给每个元素起名</li>
+</ul>
+</li>
+<li>定义 tuple struct： 使用 struct 关键字，后面是名字，以及里面元素的类型</li>
+</ul>
+<blockquote>
+<p>black 和 origin 是不同的类型，是不同 tuple struct 的实例</p>
+</blockquote>
+<figure class="highlight rust"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br></pre></td><td class="code"><pre><span class="line"><span class="class"><span class="keyword">struct</span> <span class="title">Color</span></span>(<span class="built_in">i32</span>, <span class="built_in">i32</span>, <span class="built_in">i32</span>);</span><br><span class="line"><span class="class"><span class="keyword">struct</span> <span class="title">Point</span></span>(<span class="built_in">i32</span>, <span class="built_in">i32</span>, <span class="built_in">i32</span>);</span><br><span class="line"><span class="keyword">let</span> black = Color(<span class="number">0</span>, <span class="number">0</span>, <span class="number">0</span>);</span><br><span class="line"><span class="keyword">let</span> orign = Ponit(<span class="number">0</span>, <span class="number">0</span>, <span class="number">0</span>);</span><br></pre></td></tr></table></figure>
+<h3 id="Unit-Like-Struct（没有任何字段）"><a href="#Unit-Like-Struct（没有任何字段）" class="headerlink" title="Unit-Like Struct（没有任何字段）"></a>Unit-Like Struct（没有任何字段）</h3><ul>
+<li>可以定义没有任何字段的 struct，叫做 Unit-Like struct（因为与()， 单元类型类似）</li>
+<li>适用于需要在某个类型上实现某个 trait，但是在里面又没有想要存储的数据</li>
+</ul>
+<h3 id="struct-数据的所有权"><a href="#struct-数据的所有权" class="headerlink" title="struct 数据的所有权"></a>struct 数据的所有权</h3><figure class="highlight rust"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br></pre></td><td class="code"><pre><span class="line"><span class="class"><span class="keyword">struct</span> <span class="title">User</span></span>&#123;</span><br><span class="line">    username: <span class="built_in">String</span>,</span><br><span class="line">    email: <span class="built_in">String</span>,</span><br><span class="line">    sign_in_count: <span class="built_in">u64</span>,</span><br><span class="line">    active: <span class="built_in">bool</span>,</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<ul>
+<li><p>这里的字段使用了 String 而不是 &amp;str</p>
+<ul>
+<li>该 struct 实例拥有其所有的数据</li>
+<li>只要 struct 实例是有效的，那么里面的字段数据也是有效的</li>
+</ul>
+</li>
+<li><p>struct 里也可以存放引用，但这需要使用生命周期</p>
+<ul>
+<li>生命周期保证只要 struct 实例是有效的，那么里面的引用也是有效的</li>
+<li>如果 struct 里面存储引用，而不使用生命周期，就会报错<figure class="highlight rust"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br></pre></td><td class="code"><pre><span class="line"><span class="class"><span class="keyword">struct</span> <span class="title">User</span></span>&#123;</span><br><span class="line">    username: &amp;<span class="built_in">str</span>,</span><br><span class="line">    email: &amp;<span class="built_in">str</span>,</span><br><span class="line">    sign_in_count: <span class="built_in">u64</span>,</span><br><span class="line">    active: <span class="built_in">bool</span>,</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="function"><span class="keyword">fn</span> <span class="title">main</span></span>() &#123;</span><br><span class="line">    <span class="built_in">println!</span>(<span class="string">&quot;hello, world&quot;</span>);</span><br><span class="line">    </span><br><span class="line">    <span class="keyword">let</span> user1 = User &#123;</span><br><span class="line">        email: <span class="string">&quot;fdas&quot;</span>,</span><br><span class="line">        usernmae: <span class="string">&quot;fda&quot;</span>,</span><br><span class="line">        active: <span class="literal">true</span>,</span><br><span class="line">        sign_in_count: <span class="number">556</span></span><br><span class="line">    &#125;;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+
+</li>
+</ul>
+</li>
+</ul>
+<h2 id="struct-例子"><a href="#struct-例子" class="headerlink" title="struct 例子"></a>struct 例子</h2><figure class="highlight rust"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br></pre></td><td class="code"><pre><span class="line"><span class="meta">#[derive(Debug)]</span></span><br><span class="line"><span class="class"><span class="keyword">struct</span> <span class="title">Rectangle</span></span> &#123;</span><br><span class="line">    width: <span class="built_in">u32</span>,</span><br><span class="line">    length: <span class="built_in">u32</span>,</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="function"><span class="keyword">fn</span> <span class="title">main</span></span>() &#123;</span><br><span class="line">    <span class="keyword">let</span> rect = Rectangle &#123;</span><br><span class="line">        width: <span class="number">30</span>,</span><br><span class="line">        length: <span class="number">50</span></span><br><span class="line">    &#125;;</span><br><span class="line"></span><br><span class="line">    <span class="built_in">println!</span>(<span class="string">&quot;&#123;&#125;&quot;</span>, area(&amp;rect));</span><br><span class="line">    <span class="built_in">println!</span>(<span class="string">&quot;&#123;:#?&#125;&quot;</span>, rect);</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="function"><span class="keyword">fn</span> <span class="title">area</span></span>(rect: &amp;Rectangle) -&gt; <span class="built_in">u32</span> &#123;</span><br><span class="line">    rect.width * rect.length</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<h2 id="struct-方法"><a href="#struct-方法" class="headerlink" title="struct 方法"></a>struct 方法</h2><ul>
+<li>方法和函数类似：<code>fn</code> 关键字、名称、参数、返回值</li>
+<li>方法与函数不同之处<ul>
+<li>方法是在struct（或<code>enum</code>、trait对象）的上下文中定义</li>
+<li>第一个参数是 self，表示方法被调用的 struct 实例</li>
+</ul>
+</li>
+</ul>
+<figure class="highlight rust"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br></pre></td><td class="code"><pre><span class="line"><span class="meta">#[derive(Debug)]</span></span><br><span class="line"><span class="class"><span class="keyword">struct</span> <span class="title">Rectangle</span></span> &#123;</span><br><span class="line">    width: <span class="built_in">u32</span>,</span><br><span class="line">    length: <span class="built_in">u32</span>,</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="keyword">impl</span> Rectangle &#123;</span><br><span class="line">    <span class="function"><span class="keyword">fn</span> <span class="title">area</span></span>(&amp;<span class="keyword">self</span>) -&gt; <span class="built_in">u32</span> &#123;</span><br><span class="line">        <span class="keyword">self</span>.width * <span class="keyword">self</span>.length</span><br><span class="line">    &#125;</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="function"><span class="keyword">fn</span> <span class="title">main</span></span>() &#123;</span><br><span class="line">    <span class="keyword">let</span> rect = Rectangle &#123;</span><br><span class="line">        width: <span class="number">30</span>,</span><br><span class="line">        length: <span class="number">50</span></span><br><span class="line">    &#125;;</span><br><span class="line"></span><br><span class="line">    <span class="built_in">println!</span>(<span class="string">&quot;&#123;&#125;&quot;</span>, rect.area());</span><br><span class="line">    <span class="built_in">println!</span>(<span class="string">&quot;&#123;:#?&#125;&quot;</span>, rect);</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<ul>
+<li>在 <code>impl</code> 块里定义方法</li>
+<li>方法的第一个参数可以是 &amp;self，也可以获得其所有权或可变借用（<code>&amp;mut self</code>），和其他参数一样</li>
+</ul>
+<h3 id="方法调用的运算符"><a href="#方法调用的运算符" class="headerlink" title="方法调用的运算符"></a>方法调用的运算符</h3><ul>
+<li>C/C++：object-&gt;something() 和 (*object).something() 一样</li>
+<li>Rust 没有 <code>-&gt;</code> 运算符</li>
+<li>Rust 会自动引用和解引用<ul>
+<li>在调用方法时就会发生这种行为</li>
+</ul>
+</li>
+<li>在调用方法时，Rust 根据情况自动添加 &amp;、<code>&amp;mut</code> 或 *，以便 object 可以匹配方法的签名</li>
+<li>下面两行代码效果相同<ul>
+<li><code>p1.distance(&amp;2);</code></li>
+<li><code>(&amp;p1).distance(&amp;p2)</code></li>
+</ul>
+</li>
+</ul>
+<h3 id="方法参数"><a href="#方法参数" class="headerlink" title="方法参数"></a>方法参数</h3><ul>
+<li>方法可以有多个参数</li>
+</ul>
+<figure class="highlight rust"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br></pre></td><td class="code"><pre><span class="line"><span class="meta">#[derive(Debug)]</span></span><br><span class="line"><span class="class"><span class="keyword">struct</span> <span class="title">Rectangle</span></span> &#123;</span><br><span class="line">    width: <span class="built_in">u32</span>,</span><br><span class="line">    length: <span class="built_in">u32</span>,</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="keyword">impl</span> Rectangle &#123;</span><br><span class="line">    <span class="function"><span class="keyword">fn</span> <span class="title">area</span></span>(&amp;<span class="keyword">self</span>) -&gt; <span class="built_in">u32</span> &#123;</span><br><span class="line">        <span class="keyword">self</span>.width * <span class="keyword">self</span>.length</span><br><span class="line">    &#125;</span><br><span class="line"></span><br><span class="line">    <span class="function"><span class="keyword">fn</span> <span class="title">can_hold</span></span>(&amp;<span class="keyword">self</span>, other: &amp;Rectangle) -&gt; <span class="built_in">bool</span> &#123;</span><br><span class="line">        <span class="keyword">self</span>.width &gt; other.width &amp;&amp; <span class="keyword">self</span>.length &gt; other.length</span><br><span class="line">    &#125;</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="function"><span class="keyword">fn</span> <span class="title">main</span></span>() &#123;</span><br><span class="line">    <span class="keyword">let</span> rect1 = Rectangle &#123;</span><br><span class="line">        width: <span class="number">30</span>,</span><br><span class="line">        length: <span class="number">50</span>,</span><br><span class="line">    &#125;;</span><br><span class="line">    <span class="keyword">let</span> rect2 = Rectangle &#123;</span><br><span class="line">        width: <span class="number">10</span>,</span><br><span class="line">        length: <span class="number">40</span>,</span><br><span class="line">    &#125;;    </span><br><span class="line">    <span class="keyword">let</span> rect3 = Rectangle &#123;</span><br><span class="line">        width: <span class="number">35</span>,</span><br><span class="line">        length: <span class="number">55</span>,</span><br><span class="line">    &#125;;</span><br><span class="line"></span><br><span class="line">    <span class="built_in">println!</span>(<span class="string">&quot;&#123;&#125;&quot;</span>, rect1.can_hold(&amp;rect2));</span><br><span class="line">    <span class="built_in">println!</span>(<span class="string">&quot;&#123;&#125;&quot;</span>, rect1.can_hold(&amp;rect3));</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<h3 id="关联函数"><a href="#关联函数" class="headerlink" title="关联函数"></a>关联函数</h3><ul>
+<li>可以在 <code>impl</code> 快里定义不把 self 作为第一个参数的函数，他们叫关联函数（并不是方法）<ul>
+<li>例如：<code>String::from()</code></li>
+</ul>
+</li>
+<li>关联函数通常用于构造器</li>
+<li><code>::</code>符号<ul>
+<li>关联函数</li>
+<li>模块创建的命名空间</li>
+</ul>
+</li>
+</ul>
+<figure class="highlight rust"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br></pre></td><td class="code"><pre><span class="line"><span class="meta">#[derive(Debug)]</span></span><br><span class="line"><span class="class"><span class="keyword">struct</span> <span class="title">Rectangle</span></span> &#123;</span><br><span class="line">    width: <span class="built_in">u32</span>,</span><br><span class="line">    length: <span class="built_in">u32</span>,</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="keyword">impl</span> Rectangle &#123;</span><br><span class="line">    <span class="function"><span class="keyword">fn</span> <span class="title">area</span></span>(&amp;<span class="keyword">self</span>) -&gt; <span class="built_in">u32</span> &#123;</span><br><span class="line">        <span class="keyword">self</span>.width * <span class="keyword">self</span>.length</span><br><span class="line">    &#125;</span><br><span class="line"></span><br><span class="line">    <span class="function"><span class="keyword">fn</span> <span class="title">can_hold</span></span>(&amp;<span class="keyword">self</span>, other: &amp;Rectangle) -&gt; <span class="built_in">bool</span> &#123;</span><br><span class="line">        <span class="keyword">self</span>.width &gt; other.width &amp;&amp; <span class="keyword">self</span>.length &gt; other.length</span><br><span class="line">    &#125;</span><br><span class="line"></span><br><span class="line">    <span class="function"><span class="keyword">fn</span> <span class="title">square</span></span>(size: <span class="built_in">u32</span>) -&gt; Rectangle &#123;</span><br><span class="line">        Rectangle &#123;</span><br><span class="line">            width: size,</span><br><span class="line">            length: size,</span><br><span class="line">        &#125;</span><br><span class="line">    &#125;</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="function"><span class="keyword">fn</span> <span class="title">main</span></span>() &#123;</span><br><span class="line">    <span class="keyword">let</span> s = Rectangle::square(<span class="number">20</span>);</span><br><span class="line">    <span class="built_in">println!</span>(<span class="string">&quot;&#123;:#?&#125;&quot;</span>, s);</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<h3 id="多个-impl-块"><a href="#多个-impl-块" class="headerlink" title="多个 impl 块"></a>多个 <code>impl</code> 块</h3><ul>
+<li>每个 struct 允许拥有多个 <code>impl</code> 块</li>
+</ul>
+<figure class="highlight rust"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br></pre></td><td class="code"><pre><span class="line"><span class="meta">#[derive(Debug)]</span></span><br><span class="line"><span class="class"><span class="keyword">struct</span> <span class="title">Rectangle</span></span> &#123;</span><br><span class="line">    width: <span class="built_in">u32</span>,</span><br><span class="line">    length: <span class="built_in">u32</span>,</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="keyword">impl</span> Rectangle &#123;</span><br><span class="line">    <span class="function"><span class="keyword">fn</span> <span class="title">area</span></span>(&amp;<span class="keyword">self</span>) -&gt; <span class="built_in">u32</span> &#123;</span><br><span class="line">        <span class="keyword">self</span>.width * <span class="keyword">self</span>.length</span><br><span class="line">    &#125;</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="keyword">impl</span> Rectangle &#123;</span><br><span class="line">    <span class="function"><span class="keyword">fn</span> <span class="title">can_hold</span></span>(&amp;<span class="keyword">self</span>, other: &amp;Rectangle) -&gt; <span class="built_in">bool</span> &#123;</span><br><span class="line">        <span class="keyword">self</span>.width &gt; other.width &amp;&amp; <span class="keyword">self</span>.length &gt; other.length</span><br><span class="line">    &#125;</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="keyword">impl</span> Rectangle &#123;</span><br><span class="line">    <span class="function"><span class="keyword">fn</span> <span class="title">square</span></span>(size: <span class="built_in">u32</span>) -&gt; Rectangle &#123;</span><br><span class="line">        Rectangle &#123;</span><br><span class="line">            width: size,</span><br><span class="line">            length: size,</span><br><span class="line">        &#125;</span><br><span class="line">    &#125;</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"></span><br><span class="line"><span class="function"><span class="keyword">fn</span> <span class="title">main</span></span>() &#123;</span><br><span class="line">    <span class="keyword">let</span> s = Rectangle::square(<span class="number">20</span>);</span><br><span class="line">    <span class="built_in">println!</span>(<span class="string">&quot;&#123;:#?&#125;&quot;</span>, s);</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+    </div>
+
+    
+    
+    
+
+      <footer class="post-footer">
+          <div class="post-tags">
+              <a href="/tags/Rust/" <i class="fa fa-tag"></i>Rust</a>
+              <a href="/tags/Rust-%E5%AD%A6%E4%B9%A0%E7%AC%94%E8%AE%B0/" <i class="fa fa-tag"></i>Rust 学习笔记</a>
+          </div>
+
+        
+
+
+        
+    <div class="post-nav">
+      <div class="post-nav-item">
+    <a href="/2021/06/09/Rust-%E5%AD%A6%E4%B9%A0%E7%AC%94%E8%AE%B0%EF%BC%9A%E7%AC%AC4%E7%AB%A0-%E6%89%80%E6%9C%89%E6%9D%83/" rel="prev" title="Rust 学习笔记：第4章 所有权">
+      <i class="fa fa-chevron-left"></i> Rust 学习笔记：第4章 所有权
+    </a></div>
+      <div class="post-nav-item">
+    <a href="/2021/06/10/Rust-%E5%AD%A6%E4%B9%A0%E7%AC%94%E8%AE%B0%EF%BC%9A%E7%AC%AC6%E7%AB%A0-%E6%9E%9A%E4%B8%BE%E4%B8%8E%E6%A8%A1%E5%BC%8F%E5%8C%B9%E9%85%8D/" rel="next" title="Rust 学习笔记：第6章 枚举与模式匹配">
+      Rust 学习笔记：第6章 枚举与模式匹配 <i class="fa fa-chevron-right"></i>
+    </a></div>
+    </div>
+      </footer>
+    
+  </article>
+  
+  
+  
+
+
+
+          </div>
+          
+
+<script>
+  window.addEventListener('tabs:register', () => {
+    let { activeClass } = CONFIG.comments;
+    if (CONFIG.comments.storage) {
+      activeClass = localStorage.getItem('comments_active') || activeClass;
+    }
+    if (activeClass) {
+      let activeTab = document.querySelector(`a[href="#comment-${activeClass}"]`);
+      if (activeTab) {
+        activeTab.click();
+      }
+    }
+  });
+  if (CONFIG.comments.storage) {
+    window.addEventListener('tabs:click', event => {
+      if (!event.target.matches('.tabs-comment .tab-content .tab-pane')) return;
+      let commentClass = event.target.classList[1];
+      localStorage.setItem('comments_active', commentClass);
+    });
+  }
+</script>
+
+        </div>
+          
+  
+  <div class="toggle sidebar-toggle">
+    <span class="toggle-line toggle-line-first"></span>
+    <span class="toggle-line toggle-line-middle"></span>
+    <span class="toggle-line toggle-line-last"></span>
+  </div>
+
+  <aside class="sidebar">
+    <div class="sidebar-inner">
+
+      <ul class="sidebar-nav motion-element">
+        <li class="sidebar-nav-toc">
+          文章目录
+        </li>
+        <li class="sidebar-nav-overview">
+          站点概览
+        </li>
+      </ul>
+
+      <!--noindex-->
+      <div class="post-toc-wrap sidebar-panel">
+          <div class="post-toc motion-element"><ol class="nav"><li class="nav-item nav-level-2"><a class="nav-link" href="#%E5%AE%9A%E4%B9%89%E5%B9%B6%E5%AE%9E%E4%BE%8B%E5%8C%96-struct"><span class="nav-number">1.</span> <span class="nav-text">定义并实例化 struct</span></a><ol class="nav-child"><li class="nav-item nav-level-3"><a class="nav-link" href="#%E5%AE%9A%E4%B9%89-struct"><span class="nav-number">1.1.</span> <span class="nav-text">定义 struct</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#%E5%AE%9E%E4%BE%8B%E5%8C%96-struct"><span class="nav-number">1.2.</span> <span class="nav-text">实例化 struct</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#%E5%8F%96%E5%BE%97-struct-%E9%87%8C%E9%9D%A2%E6%9F%90%E4%B8%AA%E5%80%BC"><span class="nav-number">1.3.</span> <span class="nav-text">取得 struct 里面某个值</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#struct-%E4%BD%9C%E4%B8%BA%E5%87%BD%E6%95%B0%E7%9A%84%E8%BF%94%E5%9B%9E%E5%80%BC"><span class="nav-number">1.4.</span> <span class="nav-text">struct 作为函数的返回值</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#%E5%AD%97%E6%AE%B5%E5%88%9D%E5%A7%8B%E5%8C%96%E7%AE%80%E5%86%99"><span class="nav-number">1.5.</span> <span class="nav-text">字段初始化简写</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#struct-%E6%9B%B4%E6%96%B0%E8%AF%AD%E6%B3%95"><span class="nav-number">1.6.</span> <span class="nav-text">struct 更新语法</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#Tuple-struct"><span class="nav-number">1.7.</span> <span class="nav-text">Tuple struct</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#Unit-Like-Struct%EF%BC%88%E6%B2%A1%E6%9C%89%E4%BB%BB%E4%BD%95%E5%AD%97%E6%AE%B5%EF%BC%89"><span class="nav-number">1.8.</span> <span class="nav-text">Unit-Like Struct（没有任何字段）</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#struct-%E6%95%B0%E6%8D%AE%E7%9A%84%E6%89%80%E6%9C%89%E6%9D%83"><span class="nav-number">1.9.</span> <span class="nav-text">struct 数据的所有权</span></a></li></ol></li><li class="nav-item nav-level-2"><a class="nav-link" href="#struct-%E4%BE%8B%E5%AD%90"><span class="nav-number">2.</span> <span class="nav-text">struct 例子</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#struct-%E6%96%B9%E6%B3%95"><span class="nav-number">3.</span> <span class="nav-text">struct 方法</span></a><ol class="nav-child"><li class="nav-item nav-level-3"><a class="nav-link" href="#%E6%96%B9%E6%B3%95%E8%B0%83%E7%94%A8%E7%9A%84%E8%BF%90%E7%AE%97%E7%AC%A6"><span class="nav-number">3.1.</span> <span class="nav-text">方法调用的运算符</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#%E6%96%B9%E6%B3%95%E5%8F%82%E6%95%B0"><span class="nav-number">3.2.</span> <span class="nav-text">方法参数</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#%E5%85%B3%E8%81%94%E5%87%BD%E6%95%B0"><span class="nav-number">3.3.</span> <span class="nav-text">关联函数</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#%E5%A4%9A%E4%B8%AA-impl-%E5%9D%97"><span class="nav-number">3.4.</span> <span class="nav-text">多个 impl 块</span></a></li></ol></li></ol></div>
+      </div>
+      <!--/noindex-->
+
+      <div class="site-overview-wrap sidebar-panel">
+        <div class="site-author motion-element" itemprop="author" itemscope itemtype="http://schema.org/Person">
+    <img class="site-author-image" itemprop="image" alt="predicate"
+      src="/images/avatar.jpg">
+  <p class="site-author-name" itemprop="name">predicate</p>
+  <div class="site-description" itemprop="description">因为热爱，所以坚持。</div>
+</div>
+<div class="site-state-wrap motion-element">
+  <nav class="site-state">
+      <div class="site-state-item site-state-posts">
+          <a href="/archives/">
+        
+          <span class="site-state-item-count">21</span>
+          <span class="site-state-item-name">日志</span>
+        </a>
+      </div>
+      <div class="site-state-item site-state-categories">
+            <a href="/categories/">
+          
+        <span class="site-state-item-count">13</span>
+        <span class="site-state-item-name">分类</span></a>
+      </div>
+      <div class="site-state-item site-state-tags">
+            <a href="/tags/">
+          
+        <span class="site-state-item-count">27</span>
+        <span class="site-state-item-name">标签</span></a>
+      </div>
+  </nav>
+</div>
+  <div class="links-of-author motion-element">
+      <span class="links-of-author-item">
+        <a href="https://github.com/killlowkey" title="GitHub → https:&#x2F;&#x2F;github.com&#x2F;killlowkey" rel="noopener" target="_blank"><i class="fa fa-fw fa-github"></i>GitHub</a>
+      </span>
+  </div>
+
+
+
+      </div>
+
+    </div>
+  </aside>
+  <div id="sidebar-dimmer"></div>
+
+
+      </div>
+    </main>
+
+    <footer class="footer">
+      <div class="footer-inner">
+        
+
+        
+
+<div class="copyright">
+  
+  &copy; 
+  <span itemprop="copyrightYear">2022</span>
+  <span class="with-love">
+    <i class="fa fa-user"></i>
+  </span>
+  <span class="author" itemprop="copyrightHolder">predicate</span>
+</div>
+  <div class="powered-by">由 <a href="https://hexo.io/" class="theme-link" rel="noopener" target="_blank">Hexo</a> & <a href="https://theme-next.org/" class="theme-link" rel="noopener" target="_blank">NexT.Gemini</a> 强力驱动
+  </div>
+
+        
+
+
+
+
+
+
+
+
+      </div>
+    </footer>
+  </div>
+
+  
+  <script src="/lib/anime.min.js"></script>
+  <script src="/lib/velocity/velocity.min.js"></script>
+  <script src="/lib/velocity/velocity.ui.min.js"></script>
+
+<script src="/js/utils.js"></script>
+
+<script src="/js/motion.js"></script>
+
+
+<script src="/js/schemes/pisces.js"></script>
+
+
+<script src="/js/next-boot.js"></script>
+
+
+
+
+  
+
+
+
+
+  
+<script src="/js/local-search.js"></script>
+
+
+
+
+
+
+
+
+
+
+
+
+
+  
+
+  
+
+</body>
+</html>

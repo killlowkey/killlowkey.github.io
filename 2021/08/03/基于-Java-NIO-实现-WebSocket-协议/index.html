@@ -1,0 +1,563 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=2">
+<meta name="theme-color" content="#222">
+<meta name="generator" content="Hexo 5.3.0">
+  <link rel="apple-touch-icon" sizes="180x180" href="/images/apple-touch-icon-next.png">
+  <link rel="icon" type="image/png" sizes="32x32" href="/images/favicon-32x32-next.png">
+  <link rel="icon" type="image/png" sizes="16x16" href="/images/favicon-16x16-next.png">
+  <link rel="mask-icon" href="/images/logo.svg" color="#222">
+
+<link rel="stylesheet" href="/css/main.css">
+
+
+<link rel="stylesheet" href="/lib/font-awesome/css/font-awesome.min.css">
+
+<script id="hexo-configurations">
+    var NexT = window.NexT || {};
+    var CONFIG = {"hostname":"example.com","root":"/","scheme":"Gemini","version":"7.8.0","exturl":false,"sidebar":{"position":"left","display":"post","padding":18,"offset":12,"onmobile":false},"copycode":{"enable":false,"show_result":false,"style":null},"back2top":{"enable":true,"sidebar":false,"scrollpercent":false},"bookmark":{"enable":false,"color":"#222","save":"auto"},"fancybox":false,"mediumzoom":false,"lazyload":false,"pangu":false,"comments":{"style":"tabs","active":null,"storage":true,"lazyload":false,"nav":null},"algolia":{"hits":{"per_page":10},"labels":{"input_placeholder":"Search for Posts","hits_empty":"We didn't find any results for the search: ${query}","hits_stats":"${hits} results found in ${time} ms"}},"localsearch":{"enable":true,"trigger":"auto","top_n_per_article":1,"unescape":false,"preload":false},"motion":{"enable":true,"async":false,"transition":{"post_block":"fadeIn","post_header":"slideDownIn","post_body":"slideDownIn","coll_header":"slideLeftIn","sidebar":"slideUpIn"}},"path":"search.xml"};
+  </script>
+
+  <meta name="description" content="本文对应的 easy-ws 源码地址：https:&#x2F;&#x2F;github.com&#x2F;killlowkey&#x2F;easy-ws   WebSocket（简写：WS）是基于 TCP 连接的全双工通信的协议，WS 协议在现实场景中用的很多，比如服务端和客户端之间互相推送数据。TCP 位于传输层，来保证我们的字节流数据可以稳定传输，而 WS 是位于应用层的协议，所谓的协议就是针对不同场景而诞生的东西，说白了协议就是">
+<meta property="og:type" content="article">
+<meta property="og:title" content="基于 Java  NIO 实现 WebSocket 协议">
+<meta property="og:url" content="http://example.com/2021/08/03/%E5%9F%BA%E4%BA%8E-Java-NIO-%E5%AE%9E%E7%8E%B0-WebSocket-%E5%8D%8F%E8%AE%AE/index.html">
+<meta property="og:site_name" content="predicate | blog">
+<meta property="og:description" content="本文对应的 easy-ws 源码地址：https:&#x2F;&#x2F;github.com&#x2F;killlowkey&#x2F;easy-ws   WebSocket（简写：WS）是基于 TCP 连接的全双工通信的协议，WS 协议在现实场景中用的很多，比如服务端和客户端之间互相推送数据。TCP 位于传输层，来保证我们的字节流数据可以稳定传输，而 WS 是位于应用层的协议，所谓的协议就是针对不同场景而诞生的东西，说白了协议就是">
+<meta property="og:locale" content="zh_CN">
+<meta property="og:image" content="http://example.com/2021/08/03/%E5%9F%BA%E4%BA%8E-Java-NIO-%E5%AE%9E%E7%8E%B0-WebSocket-%E5%8D%8F%E8%AE%AE/images/Snipaste_2021-08-02_22-01-05.png">
+<meta property="og:image" content="http://example.com/2021/08/03/%E5%9F%BA%E4%BA%8E-Java-NIO-%E5%AE%9E%E7%8E%B0-WebSocket-%E5%8D%8F%E8%AE%AE/images/Snipaste_2021-08-03_11-48-03.png">
+<meta property="og:image" content="http://example.com/2021/08/03/%E5%9F%BA%E4%BA%8E-Java-NIO-%E5%AE%9E%E7%8E%B0-WebSocket-%E5%8D%8F%E8%AE%AE/images/Snipaste_2021-08-03_11-48-24.png">
+<meta property="article:published_time" content="2021-08-03T08:28:00.000Z">
+<meta property="article:modified_time" content="2022-03-24T04:57:14.180Z">
+<meta property="article:author" content="predicate">
+<meta property="article:tag" content="Java">
+<meta property="article:tag" content="WebSocket">
+<meta property="article:tag" content="NIO">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:image" content="http://example.com/2021/08/03/%E5%9F%BA%E4%BA%8E-Java-NIO-%E5%AE%9E%E7%8E%B0-WebSocket-%E5%8D%8F%E8%AE%AE/images/Snipaste_2021-08-02_22-01-05.png">
+
+<link rel="canonical" href="http://example.com/2021/08/03/%E5%9F%BA%E4%BA%8E-Java-NIO-%E5%AE%9E%E7%8E%B0-WebSocket-%E5%8D%8F%E8%AE%AE/">
+
+
+<script id="page-configurations">
+  // https://hexo.io/docs/variables.html
+  CONFIG.page = {
+    sidebar: "",
+    isHome : false,
+    isPost : true,
+    lang   : 'zh-CN'
+  };
+</script>
+
+  <title>基于 Java  NIO 实现 WebSocket 协议 | predicate | blog</title>
+  
+
+
+
+
+
+
+  <noscript>
+  <style>
+  .use-motion .brand,
+  .use-motion .menu-item,
+  .sidebar-inner,
+  .use-motion .post-block,
+  .use-motion .pagination,
+  .use-motion .comments,
+  .use-motion .post-header,
+  .use-motion .post-body,
+  .use-motion .collection-header { opacity: initial; }
+
+  .use-motion .site-title,
+  .use-motion .site-subtitle {
+    opacity: initial;
+    top: initial;
+  }
+
+  .use-motion .logo-line-before i { left: initial; }
+  .use-motion .logo-line-after i { right: initial; }
+  </style>
+</noscript>
+
+</head>
+
+<body itemscope itemtype="http://schema.org/WebPage">
+  <div class="container use-motion">
+    <div class="headband"></div>
+
+    <header class="header" itemscope itemtype="http://schema.org/WPHeader">
+      <div class="header-inner"><div class="site-brand-container">
+  <div class="site-nav-toggle">
+    <div class="toggle" aria-label="切换导航栏">
+      <span class="toggle-line toggle-line-first"></span>
+      <span class="toggle-line toggle-line-middle"></span>
+      <span class="toggle-line toggle-line-last"></span>
+    </div>
+  </div>
+
+  <div class="site-meta">
+
+    <a href="/" class="brand" rel="start">
+      <span class="logo-line-before"><i></i></span>
+      <h1 class="site-title">predicate | blog</h1>
+      <span class="logo-line-after"><i></i></span>
+    </a>
+      <p class="site-subtitle" itemprop="description">你好，世界！</p>
+  </div>
+
+  <div class="site-nav-right">
+    <div class="toggle popup-trigger">
+        <i class="fa fa-search fa-fw fa-lg"></i>
+    </div>
+  </div>
+</div>
+
+
+
+
+<nav class="site-nav">
+  <ul id="menu" class="menu">
+        <li class="menu-item menu-item-home">
+
+    <a href="/" rel="section"><i class="fa fa-fw fa-home"></i>首页</a>
+
+  </li>
+        <li class="menu-item menu-item-categories">
+
+    <a href="/categories/" rel="section"><i class="fa fa-fw fa-th"></i>分类</a>
+
+  </li>
+        <li class="menu-item menu-item-tags">
+
+    <a href="/tags/" rel="section"><i class="fa fa-fw fa-tags"></i>标签</a>
+
+  </li>
+        <li class="menu-item menu-item-archives">
+
+    <a href="/archives/" rel="section"><i class="fa fa-fw fa-archive"></i>归档</a>
+
+  </li>
+      <li class="menu-item menu-item-search">
+        <a role="button" class="popup-trigger"><i class="fa fa-search fa-fw"></i>搜索
+        </a>
+      </li>
+  </ul>
+</nav>
+
+
+
+  <div class="search-pop-overlay">
+    <div class="popup search-popup">
+        <div class="search-header">
+  <span class="search-icon">
+    <i class="fa fa-search"></i>
+  </span>
+  <div class="search-input-container">
+    <input autocomplete="off" autocapitalize="off"
+           placeholder="搜索..." spellcheck="false"
+           type="search" class="search-input">
+  </div>
+  <span class="popup-btn-close">
+    <i class="fa fa-times-circle"></i>
+  </span>
+</div>
+<div id="search-result">
+  <div id="no-result">
+    <i class="fa fa-spinner fa-pulse fa-5x fa-fw"></i>
+  </div>
+</div>
+
+    </div>
+  </div>
+
+</div>
+    </header>
+
+    
+  <div class="back-to-top">
+    <i class="fa fa-arrow-up"></i>
+    <span>0%</span>
+  </div>
+
+
+    <main class="main">
+      <div class="main-inner">
+        <div class="content-wrap">
+          
+
+          <div class="content post posts-expand">
+            
+
+    
+  
+  
+  <article itemscope itemtype="http://schema.org/Article" class="post-block" lang="zh-CN">
+    <link itemprop="mainEntityOfPage" href="http://example.com/2021/08/03/%E5%9F%BA%E4%BA%8E-Java-NIO-%E5%AE%9E%E7%8E%B0-WebSocket-%E5%8D%8F%E8%AE%AE/">
+
+    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
+      <meta itemprop="image" content="/images/avatar.jpg">
+      <meta itemprop="name" content="predicate">
+      <meta itemprop="description" content="因为热爱，所以坚持。">
+    </span>
+
+    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
+      <meta itemprop="name" content="predicate | blog">
+    </span>
+      <header class="post-header">
+        <h1 class="post-title" itemprop="name headline">
+          基于 Java  NIO 实现 WebSocket 协议
+        </h1>
+
+        <div class="post-meta">
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="fa fa-calendar-o"></i>
+              </span>
+              <span class="post-meta-item-text">发表于</span>
+
+              <time title="创建时间：2021-08-03 16:28:00" itemprop="dateCreated datePublished" datetime="2021-08-03T16:28:00+08:00">2021-08-03</time>
+            </span>
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="fa fa-folder-o"></i>
+              </span>
+              <span class="post-meta-item-text">分类于</span>
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
+                  <a href="/categories/Java/" itemprop="url" rel="index"><span itemprop="name">Java</span></a>
+                </span>
+            </span>
+
+          
+
+        </div>
+      </header>
+
+    
+    
+    
+    <div class="post-body" itemprop="articleBody">
+
+      
+        <blockquote>
+<p>本文对应的 easy-ws 源码地址：<a target="_blank" rel="noopener" href="https://github.com/killlowkey/easy-ws">https://github.com/killlowkey/easy-ws</a></p>
+</blockquote>
+<p> WebSocket（简写：WS）是基于 TCP 连接的<a target="_blank" rel="noopener" href="https://baike.baidu.com/item/%E5%85%A8%E5%8F%8C%E5%B7%A5">全双工</a>通信的协议，WS 协议在现实场景中用的很多，比如服务端和客户端之间互相推送数据。TCP 位于传输层，来保证我们的字节流数据可以稳定传输，而 WS 是位于应用层的协议，所谓的协议就是针对不同场景而诞生的东西，说白了协议就是服务端与客户端交互的方式。<a id="more"></a></p>
+<p>本文会基于 Java NIO 实现简易的 WS 协议，在正式开始本文之前，希望读者有 Java NIO 基础和对 WS 协议有个大致的认识，倘若你有这些基础，那么阅读本文就会事半功倍。</p>
+<h2 id="搭建-TCP-服务"><a href="#搭建-TCP-服务" class="headerlink" title="搭建 TCP 服务"></a>搭建 TCP 服务</h2><p>既然我们是使用 NIO 来实现 WS 协议，那么需要使用 NIO 作为传输层，在开始之前我们先来介绍 NIO 中几个核心的概念。NIO 中有Channel、Selector、ByteBuffer 三大核心组件。Channel 可以理解为客户端与服务端建立的连接，它们之间可以相互发送消息，消息则通过 ByteBuffer 来表示，说白了 ByteBuffer 就是个消息的存储体，我们将消息用 ByteBuffer 来包裹，然后将 ByteBuffer 扔给 Channel，那么消息就发送给对方了。Selector 是不同平台多路复用的抽象，什么是多路复用呢？没有多路复用之前，一个线程对应了一个链接，这就是传统的 BIO 模式，因为我们从客户端读写数据都是会阻塞的，倘若发生了阻塞，那么这个线程也就会被休眠，就会白白浪费操作系统资源，说个大白话，就是给钱不干活。有了多路复用之后，此时一个线程可以处理多个链接，该线程只会对有状态的链接进行处理，比如从客户端接收到连接、客户端有数据过来了，这种情况线程就要干活了；倘若管理的连接没有状态，那么这个线程也就被休眠了。</p>
+<p>如下代码所示，我们分别对 ServerSocketChannel 与 Selector 进行初始化，ServerSocketChannel 负责从客户端接收连接。第3行代码配置 ServerSocketChannel  为非阻塞的模式，倘若服务端的 Channel 是阻塞的，它是无法被 Selector 管理的。最后将服务端的 Channel 绑定监听端口，然后调用 <code>ServerSocketChannel#register</code>方法来为  ServerSocketChannel 注册 selector，这里的 <code> SelectionKey.OP_ACCEPT</code> 参数含义是只对 ServerSocketChannel 的接收连接操作进行处理。</p>
+<figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// com.easy.ws.WsServer#initServer</span></span><br><span class="line">Selector selector = Selector.open();</span><br><span class="line">ServerSocketChannel serverSocketChannel = ServerSocketChannel.open();</span><br><span class="line">serverSocketChannel.configureBlocking(<span class="keyword">false</span>);</span><br><span class="line">serverSocketChannel.socket().bind(<span class="keyword">new</span> InetSocketAddress(<span class="number">8080</span>));</span><br><span class="line">serverSocketChannel.register(selector, SelectionKey.OP_ACCEPT);</span><br></pre></td></tr></table></figure>
+<p>ServerSocketChannel 初始化之后，我们通过一个死循环不停的接收客户端的连接。下列第2行代码，调用了 <code>Selector#select()</code> 方法，该方法会产生阻塞，如果当前 Selector 管理的 channel 没有新状态，那么线程会一直的阻塞在这。倘若有客户端连接过来，我们就来到了第3行代码此时会获取 SelectionKey 迭代器，然后通过一个 while 循环来遍历它，得到一个 SelectionKey  对象，这样要注意，需要调用迭代器的 remove() 方法来移除该对象，否则下次会重复处理。</p>
+<p>然后通过 <code>SelectionKey#isAcceptable()</code> 来判断是否有连接过来了，从 SelectionKey 中获取 ServerSocketChannel  对象，并调用它的 accept() 方法来接收连接即可。这里还有一个关键点，因为客户端连接（SocketChannel）也是交由 Selector 来进行管理的，所以 SocketChannel 也需要配置为非阻塞模式。最后我们设置了一个 KEEPALIVE 参数，因为 ws 协议可以互相推送数据的特性，那么服务端与客户端之间需要保持一个长连接的状态，所以我们设置  KEEPALIVE 为 true。</p>
+<figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// com.easy.ws.WsServer#start</span></span><br><span class="line"><span class="keyword">while</span> (running) &#123;</span><br><span class="line">    selector.select();</span><br><span class="line">    Iterator&lt;SelectionKey&gt; iterator = selector.selectedKeys().iterator();</span><br><span class="line"></span><br><span class="line">    <span class="keyword">while</span> (iterator.hasNext()) &#123;</span><br><span class="line">        SelectionKey selectionKey = iterator.next();</span><br><span class="line">        iterator.remove();</span><br><span class="line"></span><br><span class="line">        <span class="keyword">if</span> (!selectionKey.isValid()) &#123;</span><br><span class="line">            <span class="keyword">continue</span>;</span><br><span class="line">        &#125;</span><br><span class="line"></span><br><span class="line">        <span class="keyword">if</span> (selectionKey.isAcceptable()) &#123;</span><br><span class="line">            <span class="comment">// accept connection from client</span></span><br><span class="line">            ServerSocketChannel ssc = (ServerSocketChannel) selectionKey.channel();</span><br><span class="line">            SocketChannel socketChannel = ssc.accept();</span><br><span class="line">            socketChannel.configureBlocking(<span class="keyword">false</span>);</span><br><span class="line">            socketChannel.setOption(StandardSocketOptions.SO_KEEPALIVE, Boolean.TRUE);</span><br><span class="line">        &#125;</span><br><span class="line">    &#125;</span><br><span class="line"></span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<h2 id="解析-WS-协议"><a href="#解析-WS-协议" class="headerlink" title="解析 WS 协议"></a>解析 WS 协议</h2><p>上一节我们搭建了一个 TCP 服务，接收到客户端连接后，那么需要从客户端读取消息，之后对该消息进行解析，来判断该数据包是否符合 WS 协议要求。</p>
+<h3 id="处理握手包"><a href="#处理握手包" class="headerlink" title="处理握手包"></a>处理握手包</h3><p>TCP 进行三次握手之后，此时客户端才与服务端建立了链接，倘若三次握手失败，那么则建立连接失败。同理，WS 连接的建立同样需要握手包，首先客户端向服务端发送握手包，服务端解析并处理之后返回响应包给客户端，此时一个 WS 连接才算真正建立了。</p>
+<p>下图是 WS 连接握手包信息，类似于 HTTP 协议的请求头，首先来看到请求头 <strong>Sec-WebSocket-Key</strong> 值，这是我们握手包中最重要的东西，该值用 base64 进行编码。握手包发送给服务端之后，然后从请求头中读取该值，处理之后返回一个 <strong>Sec-WebSocket-Accept</strong> 响应头</p>
+<p><img src="images/Snipaste_2021-08-02_22-01-05.png" alt="Snipaste_2021-08-02_22-01-05"></p>
+<p>从 SocketChannel 读取请求之后，我们会得到一个请求头，如第8行代码所示，我们会从请求头中寻找 Sec-WebSocket-Key 值，如果该请求头未找到，那么则关闭连接，说明这个请求不是 WS 连接。找到之后我们调用了 getSecWebSocketAccept(String) 方法，来生成 Sec-WebSocket-Accept 响应头。</p>
+<p>进入该方法后，在请求头 Sec-WebSocket-Key 值后加上一个固定的 GUID（258EAFA5-E914-47DA-95CA-C5AB0DC85B11），GUID 的值是 WS 协议所规范的，得到新生成的字符串后，将该字符串进行 SHA1 加密，然后将加密的 byte 数组进行 Base64 编码，最后得到 Sec-WebSocket-Accept 值。</p>
+<figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// com.easy.ws.WsServer#handlerHandshake</span></span><br><span class="line"><span class="function"><span class="keyword">private</span> <span class="keyword">boolean</span> <span class="title">handlerHandshake</span><span class="params">(SocketChannel socketChannel)</span> </span>&#123;</span><br><span class="line">    ByteBuffer data = ByteBuffer.allocate(<span class="number">1024</span>);</span><br><span class="line">    Pattern pattern = Pattern.compile(<span class="string">&quot;Sec-WebSocket-Key: (.*)&quot;</span>);</span><br><span class="line"></span><br><span class="line">    <span class="keyword">try</span> &#123;</span><br><span class="line">        socketChannel.read(data);</span><br><span class="line">        <span class="comment">// obtain Sec-WebSocket-Key value from request header</span></span><br><span class="line">        Matcher matcher = pattern.matcher(<span class="keyword">new</span> String(data.array(), StandardCharsets.UTF_8));</span><br><span class="line">        <span class="keyword">if</span> (matcher.find()) &#123;</span><br><span class="line">            String key = matcher.group(<span class="number">1</span>).trim();</span><br><span class="line">            String response = <span class="string">&quot;HTTP/1.1 101 Switching Protocols\r\nUpgrade: &quot;</span></span><br><span class="line">                + <span class="string">&quot;websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Accept: &quot;</span></span><br><span class="line">                + getSecWebSocketAccept(key) + <span class="string">&quot;\r\n\r\n&quot;</span>;</span><br><span class="line">            <span class="comment">// write handshake packet</span></span><br><span class="line">            socketChannel.write(ByteBuffer.wrap(response.getBytes(StandardCharsets.UTF_8)));</span><br><span class="line">        &#125; <span class="keyword">else</span> &#123;</span><br><span class="line">            logger.warn(socketChannel.getRemoteAddress() + <span class="string">&quot; not found ws handshake&quot;</span>);</span><br><span class="line">        &#125;</span><br><span class="line">    &#125; <span class="keyword">catch</span> (IOException | NoSuchAlgorithmException e) &#123;</span><br><span class="line">        <span class="keyword">try</span> &#123;</span><br><span class="line">            socketChannel.close();</span><br><span class="line">        &#125; <span class="keyword">catch</span> (IOException ioException) &#123;</span><br><span class="line">            ioException.printStackTrace();</span><br><span class="line">        &#125;</span><br><span class="line">        <span class="keyword">return</span> <span class="keyword">false</span>;</span><br><span class="line">    &#125; <span class="keyword">finally</span> &#123;</span><br><span class="line">        data.clear();</span><br><span class="line">    &#125;</span><br><span class="line"></span><br><span class="line">    <span class="keyword">return</span> <span class="keyword">true</span>;</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"></span><br><span class="line"><span class="comment">// 服务端先获取 Sec-WebSocket-Key 请求头的值，之后在该值后加上 GUID</span></span><br><span class="line"><span class="comment">// 然后对该字符串进行 SHA1 加密，得到一个 byte 数组，最终将 byte 数组进行base64加密即可</span></span><br><span class="line"><span class="function"><span class="keyword">private</span> String <span class="title">getSecWebSocketAccept</span><span class="params">(String key)</span> <span class="keyword">throws</span> NoSuchAlgorithmException </span>&#123;</span><br><span class="line">    String guid = <span class="string">&quot;258EAFA5-E914-47DA-95CA-C5AB0DC85B11&quot;</span>;</span><br><span class="line">    key += guid;</span><br><span class="line">    MessageDigest md = MessageDigest.getInstance(<span class="string">&quot;SHA-1&quot;</span>);</span><br><span class="line">    md.update(key.getBytes(StandardCharsets.UTF_8), <span class="number">0</span>, key.length());</span><br><span class="line">    <span class="keyword">byte</span>[] shaHash = md.digest();</span><br><span class="line">    <span class="keyword">return</span> Base64.getEncoder().encodeToString(shaHash);</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>将响应头返回给客户端后，客户端就与服务端建立起了 WS 连接。因为 easy-ws 借鉴了 Netty 的 Boss-Worker 设计，Boss 线程负责从客户端接收连接，而 Worker 线程负责对客户端连接进行处理。所以成功建立起 WS 连接后，我们需要将 SocketChannel 注册到 Worker 的线程中（每个 Worker 线程都有一个 Selector），Worker 线程就可以对注册的连接进行处理了，具体的实现细节还请看 <a target="_blank" rel="noopener" href="https://github.com/killlowkey/easy-ws">easy-ws</a> 源码，这里就不过多赘述了。</p>
+<blockquote>
+<p>Boss 线程只有一个，而 Worker 是有多个</p>
+</blockquote>
+<figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// com.easy.ws.WsServer#registerSocketChannel</span></span><br><span class="line"><span class="function"><span class="keyword">private</span> <span class="keyword">void</span> <span class="title">registerSocketChannel</span><span class="params">(SocketChannel socketChannel)</span> </span>&#123;</span><br><span class="line">    <span class="keyword">this</span>.worker[count.getAndIncrement() % WORKER_NUM].register(socketChannel);</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<h3 id="处理-WS-请求"><a href="#处理-WS-请求" class="headerlink" title="处理 WS 请求"></a>处理 WS 请求</h3><p>SocketChannel 注册到 Worker 线程之后，那么 Worker 就可以对该连接进行处理，处理方式跟服务端逻辑相似。这样有一个坑，调用 <code>Selector#select()</code> 方法需要加上一个 timeout，因为 Boss 与 Worker 线程启动时间相差不大，Boss 将接收到客户端连接注册到 Worker 线程后，倘若没有加上 timeout ， 这个 Worker 线程就阻塞在这了，因为 Selector 实现问题，也就无法处理新注册的 SocketChannel，之后客户端发送了消息，Worker 线程是读取不到的。</p>
+<figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// com.easy.ws.WorkerThread#run</span></span><br><span class="line"><span class="meta">@Override</span></span><br><span class="line"><span class="function"><span class="keyword">public</span> <span class="keyword">void</span> <span class="title">run</span><span class="params">()</span> </span>&#123;</span><br><span class="line">    <span class="keyword">while</span> (running) &#123;</span><br><span class="line">        <span class="keyword">try</span> &#123;</span><br><span class="line">            <span class="comment">// 不加上 timout，channel 注册之后无法读取消息</span></span><br><span class="line">            <span class="keyword">this</span>.selector.select(<span class="number">1000L</span>);</span><br><span class="line">            Iterator&lt;SelectionKey&gt; iterator = <span class="keyword">this</span>.selector.selectedKeys().iterator();</span><br><span class="line">            <span class="keyword">while</span> (iterator.hasNext()) &#123;</span><br><span class="line">                SelectionKey selectionKey = iterator.next();</span><br><span class="line">                iterator.remove();</span><br><span class="line"></span><br><span class="line">                <span class="keyword">if</span> (!selectionKey.isValid()) &#123;</span><br><span class="line">                    <span class="keyword">continue</span>;</span><br><span class="line">                &#125;</span><br><span class="line"></span><br><span class="line">                <span class="keyword">if</span> (selectionKey.isReadable()) &#123;</span><br><span class="line">                    WsContext wsContext = (WsContext) selectionKey.attachment();</span><br><span class="line">                    <span class="comment">// 处理 ws body</span></span><br><span class="line">                    wsContext.handlerPayload();</span><br><span class="line">                &#125;</span><br><span class="line">            &#125;</span><br><span class="line"></span><br><span class="line">        &#125; <span class="keyword">catch</span> (IOException e) &#123;</span><br><span class="line">            e.printStackTrace();</span><br><span class="line">        &#125;</span><br><span class="line">    &#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>当 SelectionKey 处于可读状态时，那么就调用 <code>WsContext#handlerPayload()</code> 方法处理即可。首先从客户端中读取数据包，之后对该数据包进行解析。</p>
+<figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// com.easy.ws.WsContextImpl#handlerPayload</span></span><br><span class="line"><span class="meta">@Override</span></span><br><span class="line"><span class="function"><span class="keyword">public</span> <span class="keyword">void</span> <span class="title">handlerPayload</span><span class="params">()</span> <span class="keyword">throws</span> IOException </span>&#123;</span><br><span class="line">    ByteBuffer byteBuffer = ByteBuffer.allocate(<span class="number">1024</span>);</span><br><span class="line">    ByteArrayOutputStream bos = <span class="keyword">new</span> ByteArrayOutputStream();</span><br><span class="line"></span><br><span class="line">    <span class="keyword">int</span> len;</span><br><span class="line">    <span class="comment">// -1 or 0 =&gt; EOF</span></span><br><span class="line">    <span class="keyword">while</span> ((len = socketChannel.read(byteBuffer)) &gt; <span class="number">0</span>) &#123;</span><br><span class="line">        bos.write(byteBuffer.array(), <span class="number">0</span>, len);</span><br><span class="line">        byteBuffer.clear();</span><br><span class="line">    &#125;</span><br><span class="line"></span><br><span class="line">    ByteBuffer data = ByteBuffer.wrap(bos.toByteArray());</span><br><span class="line">    <span class="keyword">if</span> (logger.isDebugEnabled()) &#123;</span><br><span class="line">        logger.debug(<span class="string">&quot;message body：&#123;&#125;&quot;</span>, Arrays.toString(data.array()));</span><br><span class="line">    &#125;</span><br><span class="line"></span><br><span class="line">    <span class="comment">//...............</span></span><br><span class="line"></span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>实现 WS 协议，重点在于 WS 数据包解析这块，WS 协议规范数据包第一个字节的后4位代表消息类型，第二个字节是消息的长度，这个字节减去 128 处于 0-125 之间，那么该消息长度是该减去后128值（举个例子，第二个字节值为132，减去128得到4，此时4在0-125 之间，那么该消息长度是4个字节）。如果该值是 126，那么第3、4字节（short）是消息长度；该值是127，第3-10 字节（long）是消息的长度。随后四个字节是消息加密的密匙，用于解密消息，每次 WS 请求的密匙都是不同的。</p>
+<blockquote>
+<p>这里说的字节都是无符号的，Java 的字节是有符号的，所以需要进行与运算得到无符号字节</p>
+<p>以下内容摘取 rfc6455  规范：<a target="_blank" rel="noopener" href="https://datatracker.ietf.org/doc/html/rfc6455#section-5.2">https://datatracker.ietf.org/doc/html/rfc6455#section-5.2</a></p>
+</blockquote>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br></pre></td><td class="code"><pre><span class="line"> 0                   1                   2                   3</span><br><span class="line"> 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1</span><br><span class="line">+-+-+-+-+-------+-+-------------+-------------------------------+</span><br><span class="line">|F|R|R|R| opcode|M| Payload len |    Extended payload length    |</span><br><span class="line">|I|S|S|S|  (4)  |A|     (7)     |             (16&#x2F;64)           |</span><br><span class="line">|N|V|V|V|       |S|             |   (if payload len&#x3D;&#x3D;126&#x2F;127)   |</span><br><span class="line">| |1|2|3|       |K|             |                               |</span><br><span class="line">+-+-+-+-+-------+-+-------------+ - - - - - - - - - - - - - - - +</span><br><span class="line">|     Extended payload length continued, if payload len &#x3D;&#x3D; 127  |</span><br><span class="line">+ - - - - - - - - - - - - - - - +-------------------------------+</span><br><span class="line">|                               |Masking-key, if MASK set to 1  |</span><br><span class="line">+-------------------------------+-------------------------------+</span><br><span class="line">| Masking-key (continued)       |          Payload Data         |</span><br><span class="line">+-------------------------------- - - - - - - - - - - - - - - - +</span><br><span class="line">:                     Payload Data continued ...                :</span><br><span class="line">+ - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - +</span><br><span class="line">|                     Payload Data continued ...                |</span><br><span class="line">+---------------------------------------------------------------+</span><br></pre></td></tr></table></figure>
+<p>OpCode 值代表消息类型</p>
+<ol>
+<li>%x0：denotes a continuation frame</li>
+<li>%x1：文本数据</li>
+<li>%x2：二进制数据</li>
+<li>%x3-7：are reserved for further non-control frames</li>
+<li>%x8：连接关闭</li>
+<li>%x9：PING</li>
+<li>%xA：PONG</li>
+<li>%xB-F：are reserved for further control frames</li>
+</ol>
+<p>了解 WS 协议规范后，我们就开始对数据包进行解析，首先对消息类型进行解析，我们向 <code>parseFrame(byte)</code> 方法传入一个 byte，之后这个 byte 与（&amp;） 0xFF 得到无符号 byte，然后在与（&amp;） 0xF，得到该无符号字节的后四位（OpCode），知道 OpCode 也就知道消息的类型了。</p>
+<figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br></pre></td><td class="code"><pre><span class="line">parseFrame(data.get())</span><br><span class="line"></span><br><span class="line"><span class="function"><span class="keyword">private</span> FrameType <span class="title">parseFrame</span><span class="params">(<span class="keyword">byte</span> code)</span> </span>&#123;</span><br><span class="line">    <span class="comment">// abcd message body：[-127, -124, 79, 43, -40, -15, 46, 73, -69, -107]</span></span><br><span class="line">    <span class="comment">// data[0] &amp; 0xFF =&gt; 129（Unsigned Byte）</span></span><br><span class="line">    <span class="comment">// 129 &amp; 0xF =&gt; 1（OpCode：最低四位）</span></span><br><span class="line">    <span class="keyword">return</span> FrameType.parseFrame((code &amp; <span class="number">0xFF</span>) &amp; <span class="number">0xF</span>);</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>随后解析消息的长度，我们先拿到数据包的第二个字节，该字节与上 0xFF 之后，得到一个无符号的 byte。再跟 128 进行异或运算（达到减去128效果），之后根据该 flag 进行进一步的解析，如果该值小于 125 那么直接返回即可，等于 126，那就获取之两个字节转为无符号 short 返回，等于127 获取后8个字节直接返回即可。</p>
+<figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// com.easy.ws.WsContextImpl#getPayloadLen</span></span><br><span class="line"><span class="function"><span class="keyword">private</span> <span class="keyword">long</span> <span class="title">getPayloadLen</span><span class="params">(ByteBuffer data)</span> </span>&#123;</span><br><span class="line">    <span class="comment">// abcd message body：[-127, -124, 79, 43, -40, -15, 46, 73, -69, -107]</span></span><br><span class="line">    <span class="comment">// data[1] &amp; 0xFF =&gt; 132（Unsigned Byte）</span></span><br><span class="line">    <span class="comment">// 132 ^ 128 =&gt; 4</span></span><br><span class="line">    <span class="keyword">int</span> flag = (data.get() &amp; <span class="number">0xFF</span>) ^ <span class="number">128</span>;</span><br><span class="line">    <span class="keyword">if</span> (flag &lt;= <span class="number">125</span>) &#123;</span><br><span class="line">        <span class="keyword">return</span> flag;</span><br><span class="line">    &#125; <span class="keyword">else</span> <span class="keyword">if</span> (flag == <span class="number">126</span>) &#123;</span><br><span class="line">        <span class="comment">// convert to unsigned short</span></span><br><span class="line">        <span class="keyword">return</span> data.getShort() &amp; <span class="number">0xFFFF</span>;</span><br><span class="line">    &#125; <span class="keyword">else</span> <span class="keyword">if</span> (flag == <span class="number">127</span>) &#123;</span><br><span class="line">        <span class="keyword">return</span> data.getLong();</span><br><span class="line">    &#125;</span><br><span class="line"></span><br><span class="line">    <span class="keyword">return</span> -<span class="number">1</span>;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>知道消息的类型和长度后，那么我们要进行最重要的一步，对消息进行解密操作。首先从数据包获取四个字节的消息密匙，再从数据包中获取指定消息长度的数据，然后进行解密操作，看到下列代码 21 行，数据的每个字节（无符号）都与密匙指定位置字节（无符号，根据要解密数据索引来计算指定位置的密匙字节）进行异或运算，得到解密的数据。</p>
+<p>此时我们对 WS 请求数据包解密就大功告成，对解密后的数据处理完成，就可以响应给客户端。</p>
+<blockquote>
+<p>有读者会产生疑问，从 ByteBuffer  获取数据时，没有看到读取数据包指定位置的数据呢？这是 ByteBuffer 特性，每使用 get 或 getXX 方法获取数据，其 ByteBuffer 偏移量都会根据对应读取的字节数更新。</p>
+</blockquote>
+<figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// com.easy.ws.WsContextImpl#decode</span></span><br><span class="line"><span class="keyword">private</span> <span class="keyword">byte</span>[] decode(ByteBuffer data) &#123;</span><br><span class="line"></span><br><span class="line">    <span class="comment">// 获取消息长度</span></span><br><span class="line">    <span class="keyword">long</span> payloadLen = getPayloadLen(data);</span><br><span class="line"></span><br><span class="line">    <span class="comment">// 获取密匙</span></span><br><span class="line">    <span class="comment">// key：[79, 43, -40, -15]</span></span><br><span class="line">    <span class="keyword">byte</span>[] key = <span class="keyword">new</span> <span class="keyword">byte</span>[<span class="number">4</span>];</span><br><span class="line">    data.get(key);</span><br><span class="line"></span><br><span class="line">    <span class="comment">// 获取消息体</span></span><br><span class="line">    <span class="comment">// payload：[46, 73, -69, -107]</span></span><br><span class="line">    <span class="keyword">byte</span>[] payload = <span class="keyword">new</span> <span class="keyword">byte</span>[(<span class="keyword">int</span>) payloadLen];</span><br><span class="line">    data.get(payload);</span><br><span class="line"></span><br><span class="line">    <span class="comment">// key：[79, 43, -40, -15]   (&amp; 0xFF)=&gt; [79, 43, 216, 241]</span></span><br><span class="line">    <span class="comment">// payload：[46, 73, -69, -107] (&amp; 0xFF)=&gt; [46, 73, 187, 149]</span></span><br><span class="line">    <span class="comment">// decode payload: =&gt; (byte) (payload[i] ^ key[i &amp; 0x3])</span></span><br><span class="line">    <span class="keyword">for</span> (<span class="keyword">int</span> i = <span class="number">0</span>; i &lt; payload.length; i++) &#123;</span><br><span class="line">        payload[i] = (<span class="keyword">byte</span>) ((payload[i] &amp; <span class="number">0xFF</span>) ^ (key[i &amp; <span class="number">0x3</span>] &amp; <span class="number">0xFF</span>));</span><br><span class="line">    &#125;</span><br><span class="line"></span><br><span class="line">    <span class="keyword">return</span> payload;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<h3 id="处理-WS-响应"><a href="#处理-WS-响应" class="headerlink" title="处理 WS 响应"></a>处理 WS 响应</h3><p>rfc6455 规范的 section-5.7 部分给出了几个响应数据包例子，下面例子大致可以将响应分为 明文、加密、分段 三类，我们响应数据时，数据包第一个字节是一个标志位，与我们解析请求数据包相同，该字节的后四位代表 OpCode，也就是消息类型，第二个字节是消息的长度，倘若我们传输的是加密数据，那么长度后面四个字节是加密的密匙。在例子3中给出响应数据分段，如果我们要响应 Hello 文本数据，将 Hello 分为 “Hel” 与 “lo” 两段数据，第一段数据包第一个字节响应 OpCode ，后面跟着 Hel 长度，最后是 Hel 内容；第二段数据包第一个字节是明文数据包第一个字节的前四位（一般是0x80），后面是分段数据的长度和内容。</p>
+<p>例子1、2、3 仅仅用于传输小于 125 个字节的数据，如果我们传输的字节大于125呢？例子 5、6给出了示例，不知读者还记得上文中我们是如何解析请求数据包长度的，如果第二个字节减去128 等于126那么消息长度是 一个无符号 short，等于127 消息长度是一个 long 类型。</p>
+<blockquote>
+<p>以下内容摘取 rfc6455  规范：<a target="_blank" rel="noopener" href="https://datatracker.ietf.org/doc/html/rfc6455#section-5.7">https://datatracker.ietf.org/doc/html/rfc6455#section-5.7</a></p>
+</blockquote>
+<ol>
+<li>A single-frame unmasked text message<ol>
+<li>0x81 0x05 0x48 0x65 0x6c 0x6c 0x6f (contains “Hello”)</li>
+</ol>
+</li>
+<li>A single-frame masked text message<ol>
+<li>0x81 0x85 0x37 0xfa 0x21 0x3d 0x7f 0x9f 0x4d 0x51 0x58 (contains “Hello”)</li>
+</ol>
+</li>
+<li>A fragmented unmasked text message<ol>
+<li>0x01 0x03 0x48 0x65 0x6c (contains “Hel”)</li>
+<li>0x80 0x02 0x6c 0x6f (contains “lo”)</li>
+</ol>
+</li>
+<li>Unmasked Ping request and masked Ping response<ol start="5">
+<li>0x89 0x05 0x48 0x65 0x6c 0x6c 0x6f (contains a body of “Hello”, but the contents of the body are arbitrary)</li>
+<li>0x8a 0x85 0x37 0xfa 0x21 0x3d 0x7f 0x9f 0x4d 0x51 0x58 (contains a body of “Hello”, matching the body of the ping)</li>
+</ol>
+</li>
+<li>256 bytes binary message in a single unmasked frame<ol>
+<li>0x82 0x7E 0x0100 [256 bytes of binary data]</li>
+</ol>
+</li>
+<li>64KiB binary message in a single unmasked frame<ol>
+<li>0x82 0x7F 0x0000000000010000 [65536 bytes of binary data]</li>
+</ol>
+</li>
+</ol>
+<p>为了降低实现难度，esay-ws 采用明文传输方式，下面的 write 方法中接收一个 WsPayload 对象，该对象包含了响应的消息类型、消息长度。我们将数据包分为两段进行传输，第一个段写入数据包的元信息（metadata），第二段写入消息的内容。如第6行代码所示，首先我们为元数据分配10个字节的空间，倘若我们传输的消息长度是一个 long ，那么消息长度占用8个字节，响应数据包第一个字节是一个标志位，第二个字节是关于消息长度的，所以整体加起来不会超过10个字节。</p>
+<p>第14行代码，我们写入数据包第一个字节，这里用 <code>0x80</code> 来跟 OpCode 进行或运算，因为第一个字节前4位几乎是固定的，我们只需要与 OpCode 进行组合即可。接下来判断消息长度，如果小于 125 那么直接将消息长度转为无符号 byte写入即可；倘若在 126 - 无符号 short 之间，那么先写入 <code>0x7E</code> 标志位在写入消息长度（无符号 short）；如果在无符号short - long 之间，那么写入 <code>0x7F</code> 标志位，最后写入该消息长度。</p>
+<p>因为响应数据包使用 ByteBuffer 来存储，这里需要调用 ByteBuffer#flip 方法将 ByteBuffer 设置为可写模式，最后调用 <code>SocketChannel#write(ByteBuffer)</code> 方法将元信息和消息内容写出即可。调用 <code>SocketChannel#write</code> 方法后，数据不会立即到达客户端，而是先将数据复制到了内核缓冲区，具体发送时机是由操作系统决定的，可能我们元数据和消息内容会组合成一个数据包一起发送给客户端。</p>
+<figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br><span class="line">49</span><br><span class="line">50</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// com.easy.ws.WsContextImpl#write</span></span><br><span class="line"><span class="meta">@Override</span></span><br><span class="line"><span class="function"><span class="keyword">public</span> <span class="keyword">void</span> <span class="title">write</span><span class="params">(WsPayload wsPayload)</span> <span class="keyword">throws</span> IOException </span>&#123;</span><br><span class="line"></span><br><span class="line">    <span class="comment">// https://datatracker.ietf.org/doc/html/rfc6455#section-5.7</span></span><br><span class="line">    ByteBuffer metadata = ByteBuffer.allocate(<span class="number">10</span>);</span><br><span class="line"></span><br><span class="line">    <span class="comment">// 写入flag</span></span><br><span class="line">    <span class="keyword">int</span> opCode = wsPayload.getFrameType().getOpCode();</span><br><span class="line">    <span class="comment">// 0x80 =&gt; 1000 0000</span></span><br><span class="line">    <span class="comment">// text frame type =&gt; 0000 0001</span></span><br><span class="line">    <span class="comment">// 0x80 | text frame type  =&gt; 1000 0001</span></span><br><span class="line">    <span class="comment">// (byte)(1000 0001) =&gt; -127</span></span><br><span class="line">    metadata.put((<span class="keyword">byte</span>) (<span class="number">0x80</span> | opCode));</span><br><span class="line"></span><br><span class="line">    <span class="comment">// write payload length</span></span><br><span class="line">    <span class="keyword">long</span> length = wsPayload.getDataLength();</span><br><span class="line">    <span class="keyword">if</span> (length &lt;= <span class="number">125</span>) &#123;</span><br><span class="line">        metadata.put((<span class="keyword">byte</span>) length);</span><br><span class="line">    &#125; <span class="keyword">else</span> <span class="keyword">if</span> (length &lt;= <span class="number">0xFFFF</span>) &#123;</span><br><span class="line">        <span class="comment">// data range 126 - 0xFFFF</span></span><br><span class="line">        metadata.put((<span class="keyword">byte</span>)  <span class="number">0x7E</span>);</span><br><span class="line">        <span class="comment">// write unsigned short</span></span><br><span class="line">        metadata.putShort((<span class="keyword">short</span>) length);</span><br><span class="line">    &#125; <span class="keyword">else</span> &#123;</span><br><span class="line">        <span class="comment">// data range &gt; 0xFFFF</span></span><br><span class="line">        metadata.put((<span class="keyword">byte</span>)  <span class="number">0x7F</span>);</span><br><span class="line">        <span class="comment">// write unsigned long</span></span><br><span class="line">        metadata.putLong(length);</span><br><span class="line">    &#125;</span><br><span class="line"></span><br><span class="line">    <span class="comment">// flip 一下才能写出数据</span></span><br><span class="line">    metadata.flip();</span><br><span class="line"></span><br><span class="line">    <span class="keyword">this</span>.socketChannel.write(metadata);</span><br><span class="line">    <span class="keyword">this</span>.socketChannel.write(ByteBuffer.wrap(wsPayload.getData()));</span><br><span class="line"></span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="comment">// com.easy.ws.WsPayload</span></span><br><span class="line"><span class="keyword">public</span> <span class="class"><span class="keyword">interface</span> <span class="title">WsPayload</span> </span>&#123;</span><br><span class="line"></span><br><span class="line">    <span class="function">FrameType <span class="title">getFrameType</span><span class="params">()</span></span>;</span><br><span class="line"></span><br><span class="line">    <span class="keyword">byte</span>[] getData();</span><br><span class="line"></span><br><span class="line">    <span class="function"><span class="keyword">default</span> <span class="keyword">long</span> <span class="title">getDataLength</span><span class="params">()</span> </span>&#123;</span><br><span class="line">        <span class="keyword">return</span> getData().length;</span><br><span class="line">    &#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<h2 id="运行-WS-服务"><a href="#运行-WS-服务" class="headerlink" title="运行 WS 服务"></a>运行 WS 服务</h2><p>在上文中，我们实现了解析握手包、请求数据包、响应数据包功能，这几个核心功能构成了一个简易的 WS 服务器。然后运行 WS 服务进行测试一下，首先传入 8080 监听端口给 WsServer，之后调用其 setWsCallback 方法设置一个 WsCallback 回调来处理信息，倘若客户端与服务端建立起链接，那么会调用 WsCallback#onOpen 方法；当接收消息到消息会调用 WsCallback#onMessage；连接关闭时，则调用 WsCallback#onClose ；最后调用 <code>WsServer#start()</code> 方法启动 WS 服务即可。</p>
+<blockquote>
+<p>下面代码是联系不到上下文的，具体的代码，还请看到 easy-ws github：<a target="_blank" rel="noopener" href="https://github.com/killlowkey/easy-ws">https://github.com/killlowkey/easy-ws</a></p>
+</blockquote>
+<figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">public</span> <span class="class"><span class="keyword">class</span> <span class="title">WsServerExample</span> </span>&#123;</span><br><span class="line"></span><br><span class="line">    <span class="function"><span class="keyword">public</span> <span class="keyword">static</span> <span class="keyword">void</span> <span class="title">main</span><span class="params">(String[] args)</span> <span class="keyword">throws</span> Exception </span>&#123;</span><br><span class="line">        WsServer wsServer = <span class="keyword">new</span> WsServer(<span class="number">8080</span>);</span><br><span class="line">        wsServer.setWsCallback(<span class="keyword">new</span> WsCallback() &#123;</span><br><span class="line"></span><br><span class="line">            <span class="meta">@Override</span></span><br><span class="line">            <span class="function"><span class="keyword">public</span> <span class="keyword">void</span> <span class="title">onOpen</span><span class="params">(WsContext context)</span> </span>&#123;</span><br><span class="line">                System.out.println(<span class="string">&quot;成功与 &quot;</span> + context.getRemoteAddress() + <span class="string">&quot;建立起 ws 链接&quot;</span>);</span><br><span class="line">            &#125;</span><br><span class="line"></span><br><span class="line">            <span class="meta">@Override</span></span><br><span class="line">            <span class="function"><span class="keyword">public</span> WsPayload <span class="title">onMessage</span><span class="params">(WsContext context, WsPayload wsPayload)</span> </span>&#123;</span><br><span class="line">                System.out.println(<span class="string">&quot;接收到 &quot;</span> + context.getRemoteAddress() + <span class="string">&quot; 消息：&quot;</span> + <span class="keyword">new</span> String(wsPayload.getData(), StandardCharsets.UTF_8));</span><br><span class="line">                <span class="comment">// send text data</span></span><br><span class="line">                <span class="keyword">return</span> <span class="keyword">new</span> DefaultWsPayload(FrameType.TEXT, <span class="string">&quot;hello,ws&quot;</span>.getBytes(StandardCharsets.UTF_8));</span><br><span class="line">            &#125;</span><br><span class="line"></span><br><span class="line">            <span class="meta">@Override</span></span><br><span class="line">            <span class="function"><span class="keyword">public</span> <span class="keyword">void</span> <span class="title">onClose</span><span class="params">(WsContext context)</span> </span>&#123;</span><br><span class="line">                System.out.println(context.getRemoteAddress() + <span class="string">&quot; 断开了 ws 链接&quot;</span>);</span><br><span class="line">                context.close();</span><br><span class="line">            &#125;</span><br><span class="line"></span><br><span class="line">        &#125;);</span><br><span class="line">        wsServer.start();</span><br><span class="line">    &#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>启动 WS 服务后，我们访问 <a target="_blank" rel="noopener" href="http://www.easyswoole.com/wstool.html">http://www.easyswoole.com/wstool.html</a> 进入WebSocket 在线测试工具，在服务器地址输入栏中输入 ws://127.0.0.1:8080 ，然后点击开始连接，客户端就与服务端建立起 WS 连接。</p>
+<p><img src="images/Snipaste_2021-08-03_11-48-03.png" alt="Snipaste_2021-08-03_11-48-03"></p>
+<p>成功建立起 WS 连接后，会在服务端控制台输出 “成功与 /127.0.0.1:61437建立起 ws 链接” 信息，在在线测试工具中，“开始连接” 按钮变成了 “关闭连接”。此时就发送内容到服务器，输入内容，点击发送到服务端按钮，会收到服务端响应的 “hello, ws”信息。</p>
+<p><img src="images/Snipaste_2021-08-03_11-48-24.png" alt="Snipaste_2021-08-03_11-48-24"></p>
+<h2 id="参考文档"><a href="#参考文档" class="headerlink" title="参考文档"></a>参考文档</h2><ol>
+<li><a target="_blank" rel="noopener" href="https://datatracker.ietf.org/doc/html/rfc6455">RFC 6455</a></li>
+<li><a target="_blank" rel="noopener" href="https://www.rfc-editor.org/info/rfc7692">RFC 7692</a></li>
+<li><a target="_blank" rel="noopener" href="https://developer.mozilla.org/en-US/docs/Web/API/WebSockets_API/Writing_WebSocket_servers">Writing_WebSocket_servers</a></li>
+</ol>
+<h2 id="尾语"><a href="#尾语" class="headerlink" title="尾语"></a>尾语</h2><p>本文并未涉及 <a target="_blank" rel="noopener" href="https://github.com/killlowkey/easy-ws">easy-ws</a> 设计细节，从而出现读着读着就联系不到上下文情况。由于篇幅的原因和简化实现 WS 协议难度，不可能对所有的细节面面俱到，只能覆盖解析 WS 协议一些重要的步骤。同时本文并未实现一个完整的 WS 协议，具体的实现细节还请读者自行探究，本文只是起到一个抛砖引玉的作用。</p>
+
+    </div>
+
+    
+    
+    
+
+      <footer class="post-footer">
+          <div class="post-tags">
+              <a href="/tags/Java/" <i class="fa fa-tag"></i>Java</a>
+              <a href="/tags/WebSocket/" <i class="fa fa-tag"></i>WebSocket</a>
+              <a href="/tags/NIO/" <i class="fa fa-tag"></i>NIO</a>
+          </div>
+
+        
+
+
+        
+    <div class="post-nav">
+      <div class="post-nav-item">
+    <a href="/2021/07/06/Rust-%E5%AD%A6%E4%B9%A0%E7%AC%94%E8%AE%B0%EF%BC%9A%E7%AC%AC10%E7%AB%A0-%E6%B3%9B%E5%9E%8B%E3%80%81trait%E3%80%81%E7%94%9F%E5%91%BD%E5%91%A8%E6%9C%9F/" rel="prev" title="Rust 学习笔记：第10章  泛型、trait、生命周期">
+      <i class="fa fa-chevron-left"></i> Rust 学习笔记：第10章  泛型、trait、生命周期
+    </a></div>
+      <div class="post-nav-item">
+    <a href="/2021/11/06/%E4%BD%BF%E7%94%A8-golang-%E5%AE%9E%E7%8E%B0%E8%A7%A3%E6%9E%90-cURL/" rel="next" title="使用 golang 实现解析 cURL">
+      使用 golang 实现解析 cURL <i class="fa fa-chevron-right"></i>
+    </a></div>
+    </div>
+      </footer>
+    
+  </article>
+  
+  
+  
+
+
+
+          </div>
+          
+
+<script>
+  window.addEventListener('tabs:register', () => {
+    let { activeClass } = CONFIG.comments;
+    if (CONFIG.comments.storage) {
+      activeClass = localStorage.getItem('comments_active') || activeClass;
+    }
+    if (activeClass) {
+      let activeTab = document.querySelector(`a[href="#comment-${activeClass}"]`);
+      if (activeTab) {
+        activeTab.click();
+      }
+    }
+  });
+  if (CONFIG.comments.storage) {
+    window.addEventListener('tabs:click', event => {
+      if (!event.target.matches('.tabs-comment .tab-content .tab-pane')) return;
+      let commentClass = event.target.classList[1];
+      localStorage.setItem('comments_active', commentClass);
+    });
+  }
+</script>
+
+        </div>
+          
+  
+  <div class="toggle sidebar-toggle">
+    <span class="toggle-line toggle-line-first"></span>
+    <span class="toggle-line toggle-line-middle"></span>
+    <span class="toggle-line toggle-line-last"></span>
+  </div>
+
+  <aside class="sidebar">
+    <div class="sidebar-inner">
+
+      <ul class="sidebar-nav motion-element">
+        <li class="sidebar-nav-toc">
+          文章目录
+        </li>
+        <li class="sidebar-nav-overview">
+          站点概览
+        </li>
+      </ul>
+
+      <!--noindex-->
+      <div class="post-toc-wrap sidebar-panel">
+          <div class="post-toc motion-element"><ol class="nav"><li class="nav-item nav-level-2"><a class="nav-link" href="#%E6%90%AD%E5%BB%BA-TCP-%E6%9C%8D%E5%8A%A1"><span class="nav-number">1.</span> <span class="nav-text">搭建 TCP 服务</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E8%A7%A3%E6%9E%90-WS-%E5%8D%8F%E8%AE%AE"><span class="nav-number">2.</span> <span class="nav-text">解析 WS 协议</span></a><ol class="nav-child"><li class="nav-item nav-level-3"><a class="nav-link" href="#%E5%A4%84%E7%90%86%E6%8F%A1%E6%89%8B%E5%8C%85"><span class="nav-number">2.1.</span> <span class="nav-text">处理握手包</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#%E5%A4%84%E7%90%86-WS-%E8%AF%B7%E6%B1%82"><span class="nav-number">2.2.</span> <span class="nav-text">处理 WS 请求</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#%E5%A4%84%E7%90%86-WS-%E5%93%8D%E5%BA%94"><span class="nav-number">2.3.</span> <span class="nav-text">处理 WS 响应</span></a></li></ol></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E8%BF%90%E8%A1%8C-WS-%E6%9C%8D%E5%8A%A1"><span class="nav-number">3.</span> <span class="nav-text">运行 WS 服务</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E5%8F%82%E8%80%83%E6%96%87%E6%A1%A3"><span class="nav-number">4.</span> <span class="nav-text">参考文档</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E5%B0%BE%E8%AF%AD"><span class="nav-number">5.</span> <span class="nav-text">尾语</span></a></li></ol></div>
+      </div>
+      <!--/noindex-->
+
+      <div class="site-overview-wrap sidebar-panel">
+        <div class="site-author motion-element" itemprop="author" itemscope itemtype="http://schema.org/Person">
+    <img class="site-author-image" itemprop="image" alt="predicate"
+      src="/images/avatar.jpg">
+  <p class="site-author-name" itemprop="name">predicate</p>
+  <div class="site-description" itemprop="description">因为热爱，所以坚持。</div>
+</div>
+<div class="site-state-wrap motion-element">
+  <nav class="site-state">
+      <div class="site-state-item site-state-posts">
+          <a href="/archives/">
+        
+          <span class="site-state-item-count">21</span>
+          <span class="site-state-item-name">日志</span>
+        </a>
+      </div>
+      <div class="site-state-item site-state-categories">
+            <a href="/categories/">
+          
+        <span class="site-state-item-count">13</span>
+        <span class="site-state-item-name">分类</span></a>
+      </div>
+      <div class="site-state-item site-state-tags">
+            <a href="/tags/">
+          
+        <span class="site-state-item-count">27</span>
+        <span class="site-state-item-name">标签</span></a>
+      </div>
+  </nav>
+</div>
+  <div class="links-of-author motion-element">
+      <span class="links-of-author-item">
+        <a href="https://github.com/killlowkey" title="GitHub → https:&#x2F;&#x2F;github.com&#x2F;killlowkey" rel="noopener" target="_blank"><i class="fa fa-fw fa-github"></i>GitHub</a>
+      </span>
+  </div>
+
+
+
+      </div>
+
+    </div>
+  </aside>
+  <div id="sidebar-dimmer"></div>
+
+
+      </div>
+    </main>
+
+    <footer class="footer">
+      <div class="footer-inner">
+        
+
+        
+
+<div class="copyright">
+  
+  &copy; 
+  <span itemprop="copyrightYear">2022</span>
+  <span class="with-love">
+    <i class="fa fa-user"></i>
+  </span>
+  <span class="author" itemprop="copyrightHolder">predicate</span>
+</div>
+  <div class="powered-by">由 <a href="https://hexo.io/" class="theme-link" rel="noopener" target="_blank">Hexo</a> & <a href="https://theme-next.org/" class="theme-link" rel="noopener" target="_blank">NexT.Gemini</a> 强力驱动
+  </div>
+
+        
+
+
+
+
+
+
+
+
+      </div>
+    </footer>
+  </div>
+
+  
+  <script src="/lib/anime.min.js"></script>
+  <script src="/lib/velocity/velocity.min.js"></script>
+  <script src="/lib/velocity/velocity.ui.min.js"></script>
+
+<script src="/js/utils.js"></script>
+
+<script src="/js/motion.js"></script>
+
+
+<script src="/js/schemes/pisces.js"></script>
+
+
+<script src="/js/next-boot.js"></script>
+
+
+
+
+  
+
+
+
+
+  
+<script src="/js/local-search.js"></script>
+
+
+
+
+
+
+
+
+
+
+
+
+
+  
+
+  
+
+</body>
+</html>

@@ -1,0 +1,637 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=2">
+<meta name="theme-color" content="#222">
+<meta name="generator" content="Hexo 5.3.0">
+  <link rel="apple-touch-icon" sizes="180x180" href="/images/apple-touch-icon-next.png">
+  <link rel="icon" type="image/png" sizes="32x32" href="/images/favicon-32x32-next.png">
+  <link rel="icon" type="image/png" sizes="16x16" href="/images/favicon-16x16-next.png">
+  <link rel="mask-icon" href="/images/logo.svg" color="#222">
+
+<link rel="stylesheet" href="/css/main.css">
+
+
+<link rel="stylesheet" href="/lib/font-awesome/css/font-awesome.min.css">
+
+<script id="hexo-configurations">
+    var NexT = window.NexT || {};
+    var CONFIG = {"hostname":"example.com","root":"/","scheme":"Gemini","version":"7.8.0","exturl":false,"sidebar":{"position":"left","display":"post","padding":18,"offset":12,"onmobile":false},"copycode":{"enable":false,"show_result":false,"style":null},"back2top":{"enable":true,"sidebar":false,"scrollpercent":false},"bookmark":{"enable":false,"color":"#222","save":"auto"},"fancybox":false,"mediumzoom":false,"lazyload":false,"pangu":false,"comments":{"style":"tabs","active":null,"storage":true,"lazyload":false,"nav":null},"algolia":{"hits":{"per_page":10},"labels":{"input_placeholder":"Search for Posts","hits_empty":"We didn't find any results for the search: ${query}","hits_stats":"${hits} results found in ${time} ms"}},"localsearch":{"enable":true,"trigger":"auto","top_n_per_article":1,"unescape":false,"preload":false},"motion":{"enable":true,"async":false,"transition":{"post_block":"fadeIn","post_header":"slideDownIn","post_body":"slideDownIn","coll_header":"slideLeftIn","sidebar":"slideUpIn"}},"path":"search.xml"};
+  </script>
+
+  <meta name="description" content="RPC 轮子源码地址：https:&#x2F;&#x2F;github.com&#x2F;killlowkey&#x2F;rpc-server  RPC（remote produce call）是一个计算机协议，广泛用于分布式系统。该协议允许当前计算机程序去调用其它计算机的程序，就像调用本地方法一样，用户无需关注底层实现的细节。 最近造了个 RPC 框架轮子，通过造轮子来学习 RPC 。并阅读开源 RPC 框架源码，借鉴其优秀的设计，">
+<meta property="og:type" content="article">
+<meta property="og:title" content="RPC 框架设计复盘">
+<meta property="og:url" content="http://example.com/2022/03/15/%E5%A6%82%E4%BD%95%E8%AE%BE%E8%AE%A1-RPC-%E6%A1%86%E6%9E%B6/index.html">
+<meta property="og:site_name" content="predicate | blog">
+<meta property="og:description" content="RPC 轮子源码地址：https:&#x2F;&#x2F;github.com&#x2F;killlowkey&#x2F;rpc-server  RPC（remote produce call）是一个计算机协议，广泛用于分布式系统。该协议允许当前计算机程序去调用其它计算机的程序，就像调用本地方法一样，用户无需关注底层实现的细节。 最近造了个 RPC 框架轮子，通过造轮子来学习 RPC 。并阅读开源 RPC 框架源码，借鉴其优秀的设计，">
+<meta property="og:locale" content="zh_CN">
+<meta property="og:image" content="https://gitee.com/killkey/images-upload/raw/master/typora/2022-03/78kqR46iYr.png">
+<meta property="og:image" content="https://gitee.com/killkey/images-upload/raw/master/typora/2022-03/bio.png">
+<meta property="og:image" content="https://gitee.com/killkey/images-upload/raw/master/typora/2022-03/NIO.png">
+<meta property="og:image" content="https://gitee.com/killkey/images-upload/raw/master/typora/2022-03/reactor.png">
+<meta property="article:published_time" content="2022-03-15T09:22:00.000Z">
+<meta property="article:modified_time" content="2022-03-24T04:57:14.180Z">
+<meta property="article:author" content="predicate">
+<meta property="article:tag" content="Java Agent">
+<meta property="article:tag" content="Design">
+<meta property="article:tag" content="Trace">
+<meta property="article:tag" content="RPC">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:image" content="https://gitee.com/killkey/images-upload/raw/master/typora/2022-03/78kqR46iYr.png">
+
+<link rel="canonical" href="http://example.com/2022/03/15/%E5%A6%82%E4%BD%95%E8%AE%BE%E8%AE%A1-RPC-%E6%A1%86%E6%9E%B6/">
+
+
+<script id="page-configurations">
+  // https://hexo.io/docs/variables.html
+  CONFIG.page = {
+    sidebar: "",
+    isHome : false,
+    isPost : true,
+    lang   : 'zh-CN'
+  };
+</script>
+
+  <title>RPC 框架设计复盘 | predicate | blog</title>
+  
+
+
+
+
+
+
+  <noscript>
+  <style>
+  .use-motion .brand,
+  .use-motion .menu-item,
+  .sidebar-inner,
+  .use-motion .post-block,
+  .use-motion .pagination,
+  .use-motion .comments,
+  .use-motion .post-header,
+  .use-motion .post-body,
+  .use-motion .collection-header { opacity: initial; }
+
+  .use-motion .site-title,
+  .use-motion .site-subtitle {
+    opacity: initial;
+    top: initial;
+  }
+
+  .use-motion .logo-line-before i { left: initial; }
+  .use-motion .logo-line-after i { right: initial; }
+  </style>
+</noscript>
+
+</head>
+
+<body itemscope itemtype="http://schema.org/WebPage">
+  <div class="container use-motion">
+    <div class="headband"></div>
+
+    <header class="header" itemscope itemtype="http://schema.org/WPHeader">
+      <div class="header-inner"><div class="site-brand-container">
+  <div class="site-nav-toggle">
+    <div class="toggle" aria-label="切换导航栏">
+      <span class="toggle-line toggle-line-first"></span>
+      <span class="toggle-line toggle-line-middle"></span>
+      <span class="toggle-line toggle-line-last"></span>
+    </div>
+  </div>
+
+  <div class="site-meta">
+
+    <a href="/" class="brand" rel="start">
+      <span class="logo-line-before"><i></i></span>
+      <h1 class="site-title">predicate | blog</h1>
+      <span class="logo-line-after"><i></i></span>
+    </a>
+      <p class="site-subtitle" itemprop="description">你好，世界！</p>
+  </div>
+
+  <div class="site-nav-right">
+    <div class="toggle popup-trigger">
+        <i class="fa fa-search fa-fw fa-lg"></i>
+    </div>
+  </div>
+</div>
+
+
+
+
+<nav class="site-nav">
+  <ul id="menu" class="menu">
+        <li class="menu-item menu-item-home">
+
+    <a href="/" rel="section"><i class="fa fa-fw fa-home"></i>首页</a>
+
+  </li>
+        <li class="menu-item menu-item-categories">
+
+    <a href="/categories/" rel="section"><i class="fa fa-fw fa-th"></i>分类</a>
+
+  </li>
+        <li class="menu-item menu-item-tags">
+
+    <a href="/tags/" rel="section"><i class="fa fa-fw fa-tags"></i>标签</a>
+
+  </li>
+        <li class="menu-item menu-item-archives">
+
+    <a href="/archives/" rel="section"><i class="fa fa-fw fa-archive"></i>归档</a>
+
+  </li>
+      <li class="menu-item menu-item-search">
+        <a role="button" class="popup-trigger"><i class="fa fa-search fa-fw"></i>搜索
+        </a>
+      </li>
+  </ul>
+</nav>
+
+
+
+  <div class="search-pop-overlay">
+    <div class="popup search-popup">
+        <div class="search-header">
+  <span class="search-icon">
+    <i class="fa fa-search"></i>
+  </span>
+  <div class="search-input-container">
+    <input autocomplete="off" autocapitalize="off"
+           placeholder="搜索..." spellcheck="false"
+           type="search" class="search-input">
+  </div>
+  <span class="popup-btn-close">
+    <i class="fa fa-times-circle"></i>
+  </span>
+</div>
+<div id="search-result">
+  <div id="no-result">
+    <i class="fa fa-spinner fa-pulse fa-5x fa-fw"></i>
+  </div>
+</div>
+
+    </div>
+  </div>
+
+</div>
+    </header>
+
+    
+  <div class="back-to-top">
+    <i class="fa fa-arrow-up"></i>
+    <span>0%</span>
+  </div>
+
+
+    <main class="main">
+      <div class="main-inner">
+        <div class="content-wrap">
+          
+
+          <div class="content post posts-expand">
+            
+
+    
+  
+  
+  <article itemscope itemtype="http://schema.org/Article" class="post-block" lang="zh-CN">
+    <link itemprop="mainEntityOfPage" href="http://example.com/2022/03/15/%E5%A6%82%E4%BD%95%E8%AE%BE%E8%AE%A1-RPC-%E6%A1%86%E6%9E%B6/">
+
+    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
+      <meta itemprop="image" content="/images/avatar.jpg">
+      <meta itemprop="name" content="predicate">
+      <meta itemprop="description" content="因为热爱，所以坚持。">
+    </span>
+
+    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
+      <meta itemprop="name" content="predicate | blog">
+    </span>
+      <header class="post-header">
+        <h1 class="post-title" itemprop="name headline">
+          RPC 框架设计复盘
+        </h1>
+
+        <div class="post-meta">
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="fa fa-calendar-o"></i>
+              </span>
+              <span class="post-meta-item-text">发表于</span>
+
+              <time title="创建时间：2022-03-15 17:22:00" itemprop="dateCreated datePublished" datetime="2022-03-15T17:22:00+08:00">2022-03-15</time>
+            </span>
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="fa fa-folder-o"></i>
+              </span>
+              <span class="post-meta-item-text">分类于</span>
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
+                  <a href="/categories/RPC/" itemprop="url" rel="index"><span itemprop="name">RPC</span></a>
+                </span>
+            </span>
+
+          
+
+        </div>
+      </header>
+
+    
+    
+    
+    <div class="post-body" itemprop="articleBody">
+
+      
+        <blockquote>
+<p>RPC 轮子源码地址：<a target="_blank" rel="noopener" href="https://github.com/killlowkey/rpc-server">https://github.com/killlowkey/rpc-server</a></p>
+</blockquote>
+<p>RPC（remote produce call）是一个计算机协议，广泛用于分布式系统。该协议允许当前计算机程序去调用其它计算机的程序，就像调用本地方法一样，用户无需关注底层实现的细节。</p>
+<p>最近造了个 RPC 框架轮子，通过造轮子来学习 RPC 。并阅读开源 RPC 框架源码，借鉴其优秀的设计，来发现自己设计不足，从而提升工程能力。</p>
+<p>造完轮子后，对其整体设计进行复盘，自己得到了些感悟，通过这篇文章来记录 RPC 框架设计思路。</p>
+<a id="more"></a>
+
+
+
+<h2 id="服务注册-发现"><a href="#服务注册-发现" class="headerlink" title="服务注册/发现"></a>服务注册/发现</h2><p>由一个大型的单体系统向微服务改造，首先要进行模块的拆分，拆分后模块数量少则几十个，多则上百个。进行微服务部署时，这些模块会被当成单体应用进行部署，每个模块就是一个服务，一个服务中部署多个应用。当服务 A 去调用服务 B，首先我们得知道服务 B 的地址，建立起 TCP 链接，才可以进行 RPC 调用。</p>
+<p>此时，会引发一个问题，我们应该如何去管理这些服务呢？当服务数量比较少时，可以通过配置的方式，指定服务 B所有的地址，在服务 A进行调用时，从配置中获取服务 B 地址。这种方式可以解决部分问题，但当服务增多时，配置会很繁琐，而且我们无法从配置中对服务进行动态的摘除和增加。</p>
+<p>服务动态摘除和增加是分布式系统中核心的功能，当服务 B 流量太高，此时就需要对服务 B 进行动态的扩容，简而言之就是通过加机器的方式，新增的机器会加入到集群，从而对外部提供服务。服务进行升级时，首先需要从集群中将该服务部分应用进行摘除，也就是说这部分应用停止对外进行服务，升级之后在注册到集群中，以此类推从而完成整个服务的升级。</p>
+<p>最优解是采用服务中心来对整个集群服务进行管理，当服务启动时向服务中心注册，服务调用时从服务中心拉取对应的服务地址，常见的服务中心有：</p>
+<ol>
+<li>Zookeeper</li>
+<li>Eurek</li>
+<li>Naco</li>
+<li>Consul</li>
+</ol>
+<p><img src="https://gitee.com/killkey/images-upload/raw/master/typora/2022-03/78kqR46iYr.png" alt="78kqR46iYr"></p>
+<p>服务中心需要保持高可用，否则服务中心挂掉，会导致整个集群都无法工作，因为进行服务调用时，不知道调用服务地址。所以服务中心需要部署多个，但又会引发数据一致性问题。数据一致性一直是分布式系统热点，目前可以归为 AP、CP 两派，主要是在可用性和一致性进行抉择，当服务中心需要管理的服务很多时，AP 的性能要优于 CP，因为 CP 系统同步开销要高于 AP。</p>
+<p>当然，也可以在应用层面来预防服务中心挂掉问题，从服务中心拉取服务后，将所有的服务缓存到本地。后续能从服务中心正常拉取服务的话，则对缓存的服务进行更新，当服务中心挂了，从本地拿取服务的地址。这种设计，可以保证服务中心挂了，还可以让集群正常的工作。</p>
+<h2 id="健康检查"><a href="#健康检查" class="headerlink" title="健康检查"></a>健康检查</h2><p>当应用引入注册中心的依赖，会向外部暴露一个健康检查的接口，注册中心向服务定时的发送心跳进行健康检查。所谓的健康检查就是判断该服务是否能正常的提供服务，倘若无法服务，那么从注册中心将该服务进行摘除，然后通知其它的服务。</p>
+<p>注册中心进行健康检查时，发生网络波动，没有接收到客户端（服务）的心跳，此时不应该判定该服务挂了，而是标记为不健康的状态，后续还一直无法收到心跳时，则从注册中心进行移除。进行网络分区时，当前的注册中心无法与该客户端进行通讯，所以一直收不到该客户端的心跳，但是其它的注册中心能正常收到该客户端心跳，注册中心需要进行协商，来判断该客户端是否需要下线。如果贸然将客户端下线的话，会影响整个集群的性能。</p>
+<h2 id="负载均衡"><a href="#负载均衡" class="headerlink" title="负载均衡"></a>负载均衡</h2><p>负载均衡是分布式系统高可用的基础组件，用于将工作负载分布到不同的服务器，简言之就是将连接分布到不同的服务器进行处理。</p>
+<p>对于 RPC 实现负载均衡，该服务需要连接到注册中心，拉取特定服务的服务器地址。进行服务调用时，采用负载均衡算法从服务列表中选择，当注册中心添加或摘除服务时，会进行一个 push 操作，本地根据特定的事件来对本地服务列表进行更改。</p>
+<blockquote>
+<p>特定服务：服务A只需要调用服务B与服务C，此时只需要从注册中心拉取服务B与服务C的节点即可</p>
+</blockquote>
+<p>下面，介绍几个目前常用负载均衡算法</p>
+<ol>
+<li>轮训：第一个连接对应列表第一个服务器，以此类推，直到到达列表尾部，然后循环</li>
+<li>随机：随机从列表中选择一个服务</li>
+<li>最少连接：选择连接数量最少的服务</li>
+<li>Hash：对请求源IP进行 Hash 运算，然后对列表进行取余操作，这种方式在一定程度上保证特定用户连接到同一台服务器</li>
+</ol>
+<h2 id="序列化"><a href="#序列化" class="headerlink" title="序列化"></a>序列化</h2><p>网络进行通讯时，通过字节来传输数据。在应用层面上，将对象转成字节数据，称为序列化；从字节数据转成对象，称为反序列化。流行的 RPC 框架，一般都会采用多种序列化框架，简言之支持多种序列化方式。因为不同的序列化适用的场景不同，可以根据业务场景来对序列化方式进行调整，比如进行跨平台使用，可以采用 Protobuf 序列化。</p>
+<p>当然 RPC 框架不一定要去兼容多种序列化方式，兼容只是让系统更加具有扩展性。如果为了实现简单的话，可以仅采用 JSON 序列化。</p>
+<p>下面对几个常用的序列化框架进行介绍。</p>
+<h3 id="JSON"><a href="#JSON" class="headerlink" title="JSON"></a>JSON</h3><p>目前最简单最通用的序列化协议，使用广泛，开发效率高，性能相对较低，维护成本较高。</p>
+<p>序列化后体积大，影响高并发。并且数据类型单一，在反序列化时影响数据的精度。</p>
+<h3 id="Protobuf"><a href="#Protobuf" class="headerlink" title="Protobuf"></a>Protobuf</h3><p>Goole 提供的序列化框架，简单快速上手，支持跨平台使用，拥有高效的兼容性。对字段进行编码，新添加的字段不会影响老结构，解决了向后兼容的问题。支持序列化与 RPC  一站式解决。采用 IDL 接口定义语言，自动生成多语言代码。</p>
+<p>序列化后二进制格式，可读性比较差，不便于调试分析。对象冗余，字段很多，生成的类较大，占用空间。</p>
+<h3 id="Thrift"><a href="#Thrift" class="headerlink" title="Thrift"></a>Thrift</h3><p>Facebook 提供的序列化框架，跨语言，实现简单。支持序列化与 RPC  一站式解决。采用 IDL 接口定义语言，自动生成多语言代码。</p>
+<p>Thrift 与 Protobuf 提供的功能类似，缺点也相同，同样采用二进制格式，不便于阅读。并且 Thrift  开发环境，编译比较麻烦。</p>
+<h2 id="网络通讯"><a href="#网络通讯" class="headerlink" title="网络通讯"></a>网络通讯</h2><p>谈及 RPC 框架设计，一定绕不过网络通讯。采用合理的 IO 模型，可以极大的提高框架的性能。在 Java 平台上，比较流行的网络框架是 Netty，Netty 对 Java NIO 进行封装，屏蔽了 NIO 实现的复杂性，提供了简易的接口。</p>
+<p>下面对三大 IO 模型进行介绍，从而引入 Reactor 模型，最后采用 Netty 作为 RPC 网络通讯框架。</p>
+<h3 id="BIO、NIO、AIO"><a href="#BIO、NIO、AIO" class="headerlink" title="BIO、NIO、AIO"></a>BIO、NIO、AIO</h3><p>BIO 是同步阻塞的模型，当服务器接收到连接后，会创建一个新的线程来处理，如果连接不进行读写时，该线程会进行阻塞，从而浪费线程资源。当连接数量不多时，并且数据传输的很频繁，此时 BIO 是一个很好选择，可以充分的利用线程的性能，相比 NIO ，可以更快的处理连接的数据，因为 NIO 需要对多个连接进行处理。</p>
+<p><img src="https://gitee.com/killkey/images-upload/raw/master/typora/2022-03/bio.png" alt="bio"></p>
+<p>对连接读写操作是阻塞的，当没有数据可读时，线程就会阻塞。线程的创建和释放需要性能开销，为了解决 BIO 问题，引入了 同步非阻塞 NIO，NIO 采用多用复用的机制，一个线程处理多个连接，当连接可进行读写时，则进行处理。在 Netty 中默认使用的是 NIO，这种模型可以应对更高的并发，在真实场景中，并不是所有的连接都在频繁的传输数据，大部分的连接还是处于空闲状态。</p>
+<p><img src="https://gitee.com/killkey/images-upload/raw/master/typora/2022-03/NIO.png" alt="NIO"></p>
+<p>AIO 是异步模型，引入异步通道概念，采用了 Proactor 模式，用户通过注册数据处理的 callback，之后对连接数据的读写都是由操作系统来完成。目前这种模型并未被广泛的使用，Linux 默认采用的还是 NIO 模型。</p>
+<p>谈到 IO 模型，需要了解同步、异步、阻塞、非阻塞概念，才能更好理解每种 IO 模型的优缺点，从而在正确场景应用。</p>
+<ol>
+<li>同步：用户线程发起I/O请求后需要等待或者轮询内核I/O操作完成后才能继续执行</li>
+<li>异步：用户线程发起I/O请求后仍需要继续执行，当内核I/O操作完成后会通知用户线程，或者调用用户线程注册的回调函数 </li>
+<li>阻塞：I/O操作彻底完成后才能返回用户空间</li>
+<li>非阻塞：I/O操作被调用后返回一个状态值，无需等I/O操作完成</li>
+</ol>
+<h3 id="Reactor-模型"><a href="#Reactor-模型" class="headerlink" title="Reactor 模型"></a>Reactor 模型</h3><p>Reactor 是 Douglas C. Schmidt 发表的 <a target="_blank" rel="noopener" href="http://www.dre.vanderbilt.edu/~schmidt/PDF/reactor-siemens.pdf">An Object Behavioral Pattern for Demultiplexing and Dispatching Handles for Synchronous Events</a> 论文中提出的模型。这种模型采用了 Boss-Worker 机制，在 Boss 里面只含有一个线程，而 Worker 采用线程池的机制。前者用于接收客户端连接，后者用于处理连接，它们底层都是采用了多路复用的机制。Boss 接收到连接之后，会对 Worker 中的线程进行轮训操作，注册连接到指定的 Worker 线程，该连接的生命就与该线程进行绑定了，直到该连接关闭，后续都是由绑定线程处理。</p>
+<p><img src="https://gitee.com/killkey/images-upload/raw/master/typora/2022-03/reactor.png" alt="reactor"></p>
+<p>这种设计可以使得系统拥有很高的并发量，同时也对角色进行职责划分。Netty 底层采用了这套模型， 所以不建议在 Netty 的 Worker 线程中进行耗时操作，因为会影响整个服务性能，对于耗时操作，可以开辟额外的线程池进行处理。</p>
+<h3 id="Netty"><a href="#Netty" class="headerlink" title="Netty"></a>Netty</h3><blockquote>
+<p>Netty 的线程模型，还查看 Reactor 模型</p>
+</blockquote>
+<p>Netty 是一个异步事件驱动的网络框架，对 Java NIO 进行封装，并屏蔽了大量实现细节。用于快速开发可维护的高性能协议服务器和客户端。</p>
+<p>框架内置了大量的编解码器，可以对常见的协议或内容进行编解码操作。此外 Netty 提供内存池设计，通过引用计数对内存进行管理，当内存没有引用时，对内存进行回收，从而让其它线程进行复用。这种设计可以避免对内存进行反复的创建和释放的性能开销，此外 Netty 还对其它操作进行优化，使得 Netty 性能很优。</p>
+<p>该章节，并不会介绍 Netty 基本操作，主要讲述 Netty 最佳实践和一些遇到的坑。</p>
+<p>RPC 是基于 TCP 的协议，之所以不采用 UDP，因为 UDP 传输具有不可靠性，对于 RPC 框架是不容忍数据丢失的。随之而来的问题，TCP 是面向字节流传输协议，当进行传输数据时，数据可能会被拆分成多个包。所以需要在应用层面将这些包进行组合拼装，这就是 TCP 沾包/拆包的处理，所谓的处理，就是当数据不是完整数据时，需要等到下一个 TCP 包传输，直到数据变得完整。例如，当进行传输 JSON 数据时，第一个包只收到了 JSON 一半的数据，另一半数据还在下一个包中，这种情况需要等待下一个包传输过来，从而才能进行 JSON 解析。</p>
+<p>Netty 自带了几种解决方案，当进行协议设计时，可以选择合适的沾包处理。</p>
+<ol>
+<li><p>消息定长：FixedLengthFrameDecoder </p>
+<blockquote>
+<p>读取指定长度的数据，数据长度不满足则进行等待</p>
+</blockquote>
+</li>
+<li><p>包尾增加特殊字符分割</p>
+<ol>
+<li>行分隔符类：LineBasedFrameDecoder</li>
+<li>自定义分隔符类 ：DelimiterBasedFrameDecoder</li>
+</ol>
+</li>
+<li><p>将消息分为消息头和消息体：LengthFieldBasedFrameDecoder 类。分为有头部的拆包与粘包、长度字段在前且有头部的拆包与粘包、多扩展头部的拆包与粘包。</p>
+</li>
+</ol>
+<p>采用 JSON 作为传输数据，需要在 Pipeline 头部添加 JsonObjectDecoder 处理器，会等待当前的数据是一个完整的 JSON，才交给下一个 ChannelHandler 进行处理。关于其它的协议的编解码器，请参考 Netty 官方 API 文档。</p>
+<p>编写 rpc-server 时，还踩到一个 Netty 坑，就是编解码的顺序要放的正确，否则会导致尾部的 ChannelInboundHandler 无法处理消息。在 rpc-server 中请求和响应的编解码器继承了 ByteToMessageCodec，可以在同一类中同时进行编解码操作。这种方式虽然带来了便捷，但是也埋下了隐患。当时服务端和客户端的编解码器在 Pipeline 中的顺序都是相同的，所以导致客户端无法处理服务响应。</p>
+<figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br></pre></td><td class="code"><pre><span class="line">ch.pipeline()</span><br><span class="line">    <span class="comment">// 请求与响应编解码器</span></span><br><span class="line">    .addLast(<span class="keyword">new</span> RpcRequestCodec())</span><br><span class="line">    .addLast(<span class="keyword">new</span> RpcResponseCodec());</span><br></pre></td></tr></table></figure>
+<p>后来排查了好久，才发现是编解码器位置不正确的问题，当客户端接收服务端响应，首先经过请求解码器，但是请求解码器是无法对响应进行解码的，数据也没有交由下一个解码器进行处理，从而导致响应数据被吞了。面对这种情况，只需要将客户端的编解码位置调整一下，就可以对响应进行解码操作。</p>
+<figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line">ch.pipeline()</span><br><span class="line">    .addLast(<span class="keyword">new</span> RpcResponseCodec())</span><br><span class="line">    .addLast(<span class="keyword">new</span> RpcRequestCodec());</span><br></pre></td></tr></table></figure>
+<p>目前在 Netty 中遇到的问题就是这些，当然 Netty 也比较容易发生内存泄露问题，这是由于申请 ByteBuf，使用之后并没有及时释放，从而导致内存不断积压，从而导致泄露。解决也很简单，ByteBuf 使用后调用 ReferenceCountUtil#release 释放即可，但后续还需使用该 ByteBuf 话，请不要进行释放操作，否则会引发连锁反应。</p>
+<h3 id="传输安全"><a href="#传输安全" class="headerlink" title="传输安全"></a>传输安全</h3><p>到现在为止，RPC 数据还是通过明文进行传输，会导致数据被拦截并修改。此时需要引入传输加密的协议 SSL/TLS，该协议在应用层与传输层之间进行工作。当服务端与客户端进行通讯时，服务端进行对原始数据加密，加密数据到达客户端，客户端对加密数据进行解密操作。</p>
+<p>SSL/TLS 协议采用公钥加密法，简言之，客户端向服务端索要公钥，然后用公钥进行加密，服务器收到密文之后，用自己的私钥进行解密。这会引出一个问题，如何保证公钥不会被修改？可以采用证书的方式，将公钥放入到证书中，证书是可信的，公钥就是可行的。</p>
+<p>上述提到的是单向认证，只有一个对象来校验对端证书的合法性，一般由客户端来进行校验。客户端只需要 ca.crt，服务端需要 server.crt、server.key。要是进行双向认证，那客户端需要持有 ca.crt、client.crt、client.key；服务端需要持有 ca.crt、server.crt、server.key。</p>
+<p>Netty 中实现 SSL/TLS 加密，通过 SslHandler 进行实现。看到如下例子， initChannel 方法通过 SslContext 创建 SSLEngine 实例，并设置 SslEngine 是 client 或者是 server 模式。之后将 SslHandler 添加到 Pipeline 头部进行加解密操作。</p>
+<blockquote>
+<p>SslContext 通过证书来进行创建，SSLHandler 需要在服务端与客户端都添加。</p>
+</blockquote>
+<figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">public</span> <span class="class"><span class="keyword">class</span> <span class="title">SslChannelInitializer</span> <span class="keyword">extends</span> <span class="title">ChannelInitializer</span>&lt;<span class="title">Channel</span>&gt; </span>&#123;</span><br><span class="line"></span><br><span class="line">    <span class="keyword">private</span> <span class="keyword">final</span> SslContext context;</span><br><span class="line">    <span class="keyword">private</span> <span class="keyword">final</span> <span class="keyword">boolean</span> startTls;</span><br><span class="line">    </span><br><span class="line">    <span class="function"><span class="keyword">public</span> <span class="title">SslChannelInitializer</span><span class="params">(SslContext context, </span></span></span><br><span class="line"><span class="function"><span class="params">                                 <span class="keyword">boolean</span> client, </span></span></span><br><span class="line"><span class="function"><span class="params">                                 <span class="keyword">boolean</span> startTls)</span> </span>&#123;   <span class="comment">//1</span></span><br><span class="line">        <span class="keyword">this</span>.context = context;</span><br><span class="line">        <span class="keyword">this</span>.startTls = startTls;</span><br><span class="line">    &#125;</span><br><span class="line">    </span><br><span class="line">    <span class="meta">@Override</span></span><br><span class="line">    <span class="function"><span class="keyword">protected</span> <span class="keyword">void</span> <span class="title">initChannel</span><span class="params">(Channel ch)</span> <span class="keyword">throws</span> Exception </span>&#123;</span><br><span class="line">        SSLEngine engine = context.newEngine(ch.alloc());  <span class="comment">//2</span></span><br><span class="line">        engine.setUseClientMode(client); <span class="comment">//3</span></span><br><span class="line">        ch.pipeline().addFirst(<span class="string">&quot;ssl&quot;</span>, <span class="keyword">new</span> SslHandler(engine, startTls));  <span class="comment">//4</span></span><br><span class="line">    &#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+
+<h2 id="方法调用"><a href="#方法调用" class="headerlink" title="方法调用"></a>方法调用</h2><p>RPC 服务启动时，会收集所有注册的方法，提供给远程服务进行调用。RPC 请求进行解析后，从请求中提取出调用方法名与参数，在本地服务中找到注册的方法进行调用。在调用之前，请求中方法参数需要适配本地方法参数。比如，对 say 方法进行调用，该方法接收一个 String 作为参数，所以需要将请求方法参数转为 String，然后才进行调用，这就是方法参数类型适配。</p>
+<figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">public</span> String <span class="title">say</span><span class="params">(String name)</span> </span>&#123;</span><br><span class="line">    <span class="keyword">return</span> <span class="string">&quot;hello &quot;</span> + name;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>RPC 方法调用并不向普通方法调用那么简单，方法调用在运行时完成，所以无法在源码级别编写代码来去调用特定方法，Java 平台提供如下几种方法调用方式</p>
+<ol>
+<li>Reflect</li>
+<li>MethodHandle</li>
+<li>ASM</li>
+</ol>
+<h3 id="Reflect"><a href="#Reflect" class="headerlink" title="Reflect"></a>Reflect</h3><p>反射在框架设计中使用的很广泛，并且反射使用也很简单。比如我们想去调用 String 的 replaceAll 方法，首先得到 String 的 Class 对象，该对象有三种方式获得。</p>
+<ol>
+<li>String 实例的 getClass() 方法</li>
+<li>String.class</li>
+<li>Class 的 forName 方法，通过类加载器得到 Class 对象</li>
+</ol>
+<p>有了 Class 对象后，可以通过其 getXXXMethod 方法传入方法名、参数类型获取方法对象，将方法访问设置为 true，最后调用 invoke 方法传入对象实例和参数调用即可。对于静态方法而言，无需传入对象实例，只需传入 null。</p>
+<figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">try</span> &#123;</span><br><span class="line">    Method method = String.class.getDeclaredMethod(<span class="string">&quot;replaceAll&quot;</span>, String.class, String.class);</span><br><span class="line">    method.setAccessible(<span class="keyword">true</span>);</span><br><span class="line">    String result = (String)method.invoke(<span class="string">&quot;hello&quot;</span>, <span class="string">&quot;h&quot;</span>, <span class="string">&quot;l&quot;</span>);</span><br><span class="line">    System.out.println(result);</span><br><span class="line">&#125; <span class="keyword">catch</span> (NoSuchMethodException e) &#123;</span><br><span class="line">    e.printStackTrace();</span><br><span class="line">&#125; <span class="keyword">catch</span> (InvocationTargetException e) &#123;</span><br><span class="line">    e.printStackTrace();</span><br><span class="line">&#125; <span class="keyword">catch</span> (IllegalAccessException e) &#123;</span><br><span class="line">    e.printStackTrace();</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+
+<h3 id="MethodHandle"><a href="#MethodHandle" class="headerlink" title="MethodHandle"></a>MethodHandle</h3><p>MethodHandle 是 JDK1.7 引入的新特性，本质上将某个具体的方法映射到 MethodHandle，通过MethodHandle直接调用该句柄所引用的底层方法，实际就是对可执行方法的引用。</p>
+<p>还拿 String 的 replcaeAll 方法举例，首先获得 MethodHandles.Lookup 对象，根据调用方法的返回类型和参数类型得到 MethodType 对象，之后根据方法的类型，来调用 Lookup 对象特定的方法获得 MethodHandle。</p>
+<ol>
+<li>findVirtual：实例方法</li>
+<li>findStatic：静态方法</li>
+</ol>
+<p>获取到  MethodHanle 对象后，通过其 invoke 传入对象实例和方法参数进行调用。</p>
+<figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">try</span> &#123;</span><br><span class="line">    MethodHandles.Lookup lookup = MethodHandles.lookup();</span><br><span class="line">    MethodType methodType = MethodType.methodType(String.class, </span><br><span class="line">                                                  <span class="keyword">new</span> Class[]&#123;String.class,</span><br><span class="line">                                                              String.class&#125;);</span><br><span class="line">    MethodHandle handle = lookup.findVirtual(String.class, <span class="string">&quot;replaceAll&quot;</span>, methodType);</span><br><span class="line">    String result = (String) handle.invoke(<span class="string">&quot;hello&quot;</span>, <span class="string">&quot;h&quot;</span>, <span class="string">&quot;l&quot;</span>);</span><br><span class="line">    System.out.println(result);</span><br><span class="line">&#125; <span class="keyword">catch</span> (NoSuchMethodException e) &#123;</span><br><span class="line">    e.printStackTrace();</span><br><span class="line">&#125; <span class="keyword">catch</span> (IllegalAccessException e) &#123;</span><br><span class="line">    e.printStackTrace();</span><br><span class="line">&#125; <span class="keyword">catch</span> (Throwable throwable) &#123;</span><br><span class="line">    throwable.printStackTrace();</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<h3 id="ASM"><a href="#ASM" class="headerlink" title="ASM"></a>ASM</h3><p>ASM 是一种比较高阶的方式，通过生成字节码完成方法的调用，从而避免反射的开销。这种设计思路来源于 <a target="_blank" rel="noopener" href="https://github.com/EsotericSoftware/reflectasm">reflectasm</a> 开源项目，rpc-server 对其进行一些改良，从而支持多个类的方法调用。</p>
+<p>本质上通过生成 switch-case 字节码来实现，RPC 服务启动时，获取所有注册的 RPC 方法，然后为每个方法分配索引。当 doInvoke 方法调用时，根据方法名获取方法索引，用于在 switch-case 中匹配 case。</p>
+<figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">public</span> Object <span class="title">doInvoke</span><span class="params">(Object obj, String methodName, Object[] args)</span> </span></span><br><span class="line"><span class="function">    <span class="keyword">throws</span> Throwable </span>&#123;</span><br><span class="line">    </span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>之所以 switch-case 不采用方法名（String）而是采用索引（int）作为条件，因为 switch-case 在底层实现是采用 number。我们编写如下代码，编译后查看生成的字节码文件。</p>
+<figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br></pre></td><td class="code"><pre><span class="line">String name = <span class="string">&quot;hello&quot;</span>;</span><br><span class="line"><span class="keyword">switch</span> (name) &#123;</span><br><span class="line">    <span class="keyword">case</span> <span class="string">&quot;hello&quot;</span>:</span><br><span class="line">        System.out.println(<span class="string">&quot;hello&quot;</span>);</span><br><span class="line">        <span class="keyword">break</span>;</span><br><span class="line">    <span class="keyword">case</span> <span class="string">&quot;world&quot;</span>:</span><br><span class="line">        System.out.println(<span class="string">&quot;world&quot;</span>);</span><br><span class="line">        <span class="keyword">break</span>;</span><br><span class="line">    <span class="keyword">default</span>:</span><br><span class="line">        System.out.println(<span class="string">&quot;default&quot;</span>);</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>得到如下生成的字节码，如果采用 String，首先会调用其 hashCode 方法得到 hash 值，为了解决 hash 冲突的问题，还进行了 equals 判断，符合要求则分配索引。之后来到了下一个 switch-case，通过索引来找到对应的 case 分支。</p>
+<p>综合考虑，采用 number 作为条件，可以减少 ASM 实现难度。</p>
+<figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br></pre></td><td class="code"><pre><span class="line">String name = <span class="string">&quot;hello&quot;</span>;</span><br><span class="line"><span class="keyword">byte</span> var3 = -<span class="number">1</span>;</span><br><span class="line"><span class="keyword">switch</span>(name.hashCode()) &#123;</span><br><span class="line">    <span class="keyword">case</span> <span class="number">99162322</span>:</span><br><span class="line">        <span class="keyword">if</span> (name.equals(<span class="string">&quot;hello&quot;</span>)) &#123;</span><br><span class="line">            var3 = <span class="number">0</span>;</span><br><span class="line">        &#125;</span><br><span class="line">        <span class="keyword">break</span>;</span><br><span class="line">    <span class="keyword">case</span> <span class="number">113318802</span>:</span><br><span class="line">        <span class="keyword">if</span> (name.equals(<span class="string">&quot;world&quot;</span>)) &#123;</span><br><span class="line">            var3 = <span class="number">1</span>;</span><br><span class="line">        &#125;</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="keyword">switch</span>(var3) &#123;</span><br><span class="line">    <span class="keyword">case</span> <span class="number">0</span>:</span><br><span class="line">        System.out.println(<span class="string">&quot;hello&quot;</span>);</span><br><span class="line">        <span class="keyword">break</span>;</span><br><span class="line">    <span class="keyword">case</span> <span class="number">1</span>:</span><br><span class="line">        System.out.println(<span class="string">&quot;world&quot;</span>);</span><br><span class="line">        <span class="keyword">break</span>;</span><br><span class="line">    <span class="keyword">default</span>:</span><br><span class="line">        System.out.println(<span class="string">&quot;default&quot;</span>);</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>对于 ASM 具体实现在此不做讲解，感兴趣的读者请阅读 <a target="_blank" rel="noopener" href="https://github.com/killlowkey/rpc-server/blob/main/src/main/java/com/github/rpc/invoke/asm/AsmGenerator.java">rpc-server</a> 的 AsmGenerator  类。</p>
+<p>我们对 doInvoke 方法进行字节码生成，方法参数为 Object、String、Object[] 数组类型。通过方法索引匹配指定的 case，在调用其目标方法。在进行 ASM 生成时，遇到一些坑，在此进行列出。</p>
+<ol>
+<li><p>需要doInvoke 方法第一个参数进行 checkcast 操作，将泛型（Object）转为具体类型（调用方法所属的类）</p>
+</li>
+<li><p>调用方法方法中含有原生类型，需要对  Object[] 中指定元素进行 unbox 操作</p>
+<blockquote>
+<p>doInvoke 方法传递是引用类型，而方法需要原生类型，如果不进行 unbox 操作，那么会出现类型不匹配，导致无法进行方法调用。</p>
+</blockquote>
+</li>
+<li><p>调用方法返回的是原生类型，需要进行 box 操作</p>
+</li>
+<li><p>调用方法中含有引用或者数组引用类型，也需要对 Object[] 中指定元素进行 checkcast 操作</p>
+</li>
+</ol>
+<h2 id="客户端代理"><a href="#客户端代理" class="headerlink" title="客户端代理"></a>客户端代理</h2><p>客户端向RPC服务发送请求，服务处理后返回响应，客户端对响应进行解析。对于客户端，请求和处理的流程相对繁琐了一些，可以使用动态代理方式来屏蔽底层的细节，让我们只关注业务。因为RPC方法就是Java普通方法，客户端与服务端采用相同的方法签名，然后使用动态代理对其处理。简言之，就是将方法名和方法参数封装成请求发送给服务端，服务端返回响应，将响应内容解析成方法返回的类型。</p>
+<p>来看到一个代理例子，RPC 服务提供了 say 方法，在客户端也提供了相同的方法签名</p>
+<p><strong>服务端</strong></p>
+<figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">public</span> String <span class="title">say</span><span class="params">(String name)</span> </span>&#123;</span><br><span class="line">    <span class="keyword">return</span> <span class="string">&quot;hello &quot;</span> + name;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p><strong>客户端</strong></p>
+<figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">public</span> <span class="class"><span class="keyword">interface</span> <span class="title">RpcService</span> </span>&#123;</span><br><span class="line">    <span class="function">String <span class="title">say</span><span class="params">(String name)</span></span>;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>使用 Proxy#newInstnace 方法对 RpcService 接口进行代理，我们将方法名称和参数提取出来组成 RPC 请求，然后发送给服务端，得到响应后提取出方法返回值，根据方法的返回值类型进行转换。</p>
+<p>下面用伪代码进行表示</p>
+<figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br></pre></td><td class="code"><pre><span class="line">ClassLoader classLoader = <span class="keyword">this</span>.getClass().getClassLoader();</span><br><span class="line">Proxy.newProxyInstance(classLoader, <span class="keyword">new</span> Class[]&#123;RpcService.class&#125;, </span><br><span class="line">                       <span class="keyword">new</span> InvocationHandler() &#123;</span><br><span class="line">    <span class="meta">@Override</span></span><br><span class="line">    <span class="function"><span class="keyword">public</span> Object <span class="title">invoke</span><span class="params">(Object proxy, </span></span></span><br><span class="line"><span class="function"><span class="params">                         Method method, </span></span></span><br><span class="line"><span class="function"><span class="params">                         Object[] args)</span> <span class="keyword">throws</span> Throwable </span>&#123;</span><br><span class="line">        <span class="comment">// 封装请求</span></span><br><span class="line">        RpcRequest request = <span class="keyword">new</span> RpcRequest(method.getName(), args);</span><br><span class="line">        <span class="comment">// 转换为具体类型</span></span><br><span class="line">        <span class="keyword">return</span> sendRequest(request).cast(method.getReturnType);</span><br><span class="line">    &#125;</span><br><span class="line">&#125;)</span><br></pre></td></tr></table></figure>
+<p>通过对接口的代理，屏蔽了请求和处理细节，用户调用本地方法，实则调用的是远程方法。</p>
+<h2 id="系统指标收集"><a href="#系统指标收集" class="headerlink" title="系统指标收集"></a>系统指标收集</h2><p>指标可以有效的反馈系统的运行状态，知道其系统是否健康。收集系统 CPU、内存、磁盘等信息，上传到第三方中间件，便于后续的统计和分析。通过指标生成火焰图，来发现系统的性能毛刺，从而定位系统问题。也可以使用系统指标来实现自定义负载均衡算法，比如节点A机器的性能要比节点B好，那么可以将多一些请求交由节点A进行处理。</p>
+<p>实现指标收集有两种方案，其一在 RPC 中编写指标收集的代码，这种方式对代码有侵入性，还会增加维护的难度。其二通过 javaagent 机制，在应用启动时，提前启动指标收集服务，该方式对代码无侵入性，还能有效减少代码复杂度。</p>
+<h2 id="链路追踪"><a href="#链路追踪" class="headerlink" title="链路追踪"></a>链路追踪</h2><p>分布式系统中，服务之间会进行频繁调用，如果某个服务出现问题，导致整体的调用时间过长影响到业务。为了解决该问题，链路追踪就应景而出了，它会追踪每次调用情况，当出现问题时，可以快速的定位服务的故障点。</p>
+<p>Google 的 Dapper 论文是现代分布式链路追踪鼻祖，业界知名的 skywalking、zipkin 链路追踪框架都是基于该论文进行设计。分布式链路追踪系统核心是收集调用信息，通过收集 HTTP、RPC、数据库、中间件调用信息，标记每次调用的时间与tag，来组合成一条完整的链路。</p>
+<p>一条链路由多个 span 构成，用户发起调用时，首先会分配 TraceId，作为该链路唯一标识。后续服务A调用服务B或调用数据库等其它中间件，使用 span 表示调用信息，并将其添加到 Trace 中。响应返回前端，意味着请求全部处理完成，所有的调用信息则形成一条完整的链路。</p>
+<h2 id="参考文档"><a href="#参考文档" class="headerlink" title="参考文档"></a>参考文档</h2><ol>
+<li><a target="_blank" rel="noopener" href="https://blog.51cto.com/u_13952501/2173038">JSON、Protobuf、Thrift、MessagePack 对比和开发指南</a></li>
+<li><a target="_blank" rel="noopener" href="https://segmentfault.com/a/1190000037714804">理解什么是BIO/NIO/AIO</a></li>
+<li><a target="_blank" rel="noopener" href="https://www.cnblogs.com/loveer/p/11479249.html">彻底理解同步 异步 阻塞 非阻塞 </a></li>
+<li><a target="_blank" rel="noopener" href="https://en.wikipedia.org/wiki/Reactor_pattern">Reactor Pattern</a></li>
+<li><a target="_blank" rel="noopener" href="https://kezhenxu94.medium.com/in-the-previous-post-we-already-have-an-echoserver-that-is-implemented-with-java-nio-lets-check-ccf5b5b32da9">Build Your Own Netty — Reactor Pattern</a></li>
+<li><a target="_blank" rel="noopener" href="https://netty.io/">netty</a></li>
+<li><a target="_blank" rel="noopener" href="https://www.nowcoder.com/discuss/588903">(近)万字总结，RPC 项目相关问题及解答</a></li>
+<li><a target="_blank" rel="noopener" href="https://www.ruanyifeng.com/blog/2014/02/ssl_tls.html">SSL/TLS协议运行机制的概述</a></li>
+<li><a target="_blank" rel="noopener" href="https://waylau.com/essential-netty-in-action/CORE%20FUNCTIONS/Securing%20Netty%20applications%20with%20SSLTLS.html">使用 SSL/TLS 加密 Netty 程序</a></li>
+<li><a target="_blank" rel="noopener" href="https://github.com/EsotericSoftware/reflectasm">reflectasm</a></li>
+<li><a target="_blank" rel="noopener" href="https://github.com/uber-common/jvm-profiler">jvm profile</a></li>
+<li><a target="_blank" rel="noopener" href="https://github.com/apache/skywalking">skywalking</a></li>
+<li><a target="_blank" rel="noopener" href="https://github.com/openzipkin/zipkin">zpikin</a></li>
+</ol>
+
+    </div>
+
+    
+    
+    
+
+      <footer class="post-footer">
+          <div class="post-tags">
+              <a href="/tags/Java-Agent/" <i class="fa fa-tag"></i>Java Agent</a>
+              <a href="/tags/Design/" <i class="fa fa-tag"></i>Design</a>
+              <a href="/tags/Trace/" <i class="fa fa-tag"></i>Trace</a>
+              <a href="/tags/RPC/" <i class="fa fa-tag"></i>RPC</a>
+          </div>
+
+        
+
+
+        
+    <div class="post-nav">
+      <div class="post-nav-item">
+    <a href="/2022/02/21/Arthas-%E5%90%AF%E5%8A%A8%E6%B5%81%E7%A8%8B%E5%88%86%E6%9E%90/" rel="prev" title="Arthas 启动流程分析">
+      <i class="fa fa-chevron-left"></i> Arthas 启动流程分析
+    </a></div>
+      <div class="post-nav-item"></div>
+    </div>
+      </footer>
+    
+  </article>
+  
+  
+  
+
+
+
+          </div>
+          
+
+<script>
+  window.addEventListener('tabs:register', () => {
+    let { activeClass } = CONFIG.comments;
+    if (CONFIG.comments.storage) {
+      activeClass = localStorage.getItem('comments_active') || activeClass;
+    }
+    if (activeClass) {
+      let activeTab = document.querySelector(`a[href="#comment-${activeClass}"]`);
+      if (activeTab) {
+        activeTab.click();
+      }
+    }
+  });
+  if (CONFIG.comments.storage) {
+    window.addEventListener('tabs:click', event => {
+      if (!event.target.matches('.tabs-comment .tab-content .tab-pane')) return;
+      let commentClass = event.target.classList[1];
+      localStorage.setItem('comments_active', commentClass);
+    });
+  }
+</script>
+
+        </div>
+          
+  
+  <div class="toggle sidebar-toggle">
+    <span class="toggle-line toggle-line-first"></span>
+    <span class="toggle-line toggle-line-middle"></span>
+    <span class="toggle-line toggle-line-last"></span>
+  </div>
+
+  <aside class="sidebar">
+    <div class="sidebar-inner">
+
+      <ul class="sidebar-nav motion-element">
+        <li class="sidebar-nav-toc">
+          文章目录
+        </li>
+        <li class="sidebar-nav-overview">
+          站点概览
+        </li>
+      </ul>
+
+      <!--noindex-->
+      <div class="post-toc-wrap sidebar-panel">
+          <div class="post-toc motion-element"><ol class="nav"><li class="nav-item nav-level-2"><a class="nav-link" href="#%E6%9C%8D%E5%8A%A1%E6%B3%A8%E5%86%8C-%E5%8F%91%E7%8E%B0"><span class="nav-number">1.</span> <span class="nav-text">服务注册&#x2F;发现</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E5%81%A5%E5%BA%B7%E6%A3%80%E6%9F%A5"><span class="nav-number">2.</span> <span class="nav-text">健康检查</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E8%B4%9F%E8%BD%BD%E5%9D%87%E8%A1%A1"><span class="nav-number">3.</span> <span class="nav-text">负载均衡</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E5%BA%8F%E5%88%97%E5%8C%96"><span class="nav-number">4.</span> <span class="nav-text">序列化</span></a><ol class="nav-child"><li class="nav-item nav-level-3"><a class="nav-link" href="#JSON"><span class="nav-number">4.1.</span> <span class="nav-text">JSON</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#Protobuf"><span class="nav-number">4.2.</span> <span class="nav-text">Protobuf</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#Thrift"><span class="nav-number">4.3.</span> <span class="nav-text">Thrift</span></a></li></ol></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E7%BD%91%E7%BB%9C%E9%80%9A%E8%AE%AF"><span class="nav-number">5.</span> <span class="nav-text">网络通讯</span></a><ol class="nav-child"><li class="nav-item nav-level-3"><a class="nav-link" href="#BIO%E3%80%81NIO%E3%80%81AIO"><span class="nav-number">5.1.</span> <span class="nav-text">BIO、NIO、AIO</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#Reactor-%E6%A8%A1%E5%9E%8B"><span class="nav-number">5.2.</span> <span class="nav-text">Reactor 模型</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#Netty"><span class="nav-number">5.3.</span> <span class="nav-text">Netty</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#%E4%BC%A0%E8%BE%93%E5%AE%89%E5%85%A8"><span class="nav-number">5.4.</span> <span class="nav-text">传输安全</span></a></li></ol></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E6%96%B9%E6%B3%95%E8%B0%83%E7%94%A8"><span class="nav-number">6.</span> <span class="nav-text">方法调用</span></a><ol class="nav-child"><li class="nav-item nav-level-3"><a class="nav-link" href="#Reflect"><span class="nav-number">6.1.</span> <span class="nav-text">Reflect</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#MethodHandle"><span class="nav-number">6.2.</span> <span class="nav-text">MethodHandle</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#ASM"><span class="nav-number">6.3.</span> <span class="nav-text">ASM</span></a></li></ol></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E5%AE%A2%E6%88%B7%E7%AB%AF%E4%BB%A3%E7%90%86"><span class="nav-number">7.</span> <span class="nav-text">客户端代理</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E7%B3%BB%E7%BB%9F%E6%8C%87%E6%A0%87%E6%94%B6%E9%9B%86"><span class="nav-number">8.</span> <span class="nav-text">系统指标收集</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E9%93%BE%E8%B7%AF%E8%BF%BD%E8%B8%AA"><span class="nav-number">9.</span> <span class="nav-text">链路追踪</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E5%8F%82%E8%80%83%E6%96%87%E6%A1%A3"><span class="nav-number">10.</span> <span class="nav-text">参考文档</span></a></li></ol></div>
+      </div>
+      <!--/noindex-->
+
+      <div class="site-overview-wrap sidebar-panel">
+        <div class="site-author motion-element" itemprop="author" itemscope itemtype="http://schema.org/Person">
+    <img class="site-author-image" itemprop="image" alt="predicate"
+      src="/images/avatar.jpg">
+  <p class="site-author-name" itemprop="name">predicate</p>
+  <div class="site-description" itemprop="description">因为热爱，所以坚持。</div>
+</div>
+<div class="site-state-wrap motion-element">
+  <nav class="site-state">
+      <div class="site-state-item site-state-posts">
+          <a href="/archives/">
+        
+          <span class="site-state-item-count">21</span>
+          <span class="site-state-item-name">日志</span>
+        </a>
+      </div>
+      <div class="site-state-item site-state-categories">
+            <a href="/categories/">
+          
+        <span class="site-state-item-count">13</span>
+        <span class="site-state-item-name">分类</span></a>
+      </div>
+      <div class="site-state-item site-state-tags">
+            <a href="/tags/">
+          
+        <span class="site-state-item-count">27</span>
+        <span class="site-state-item-name">标签</span></a>
+      </div>
+  </nav>
+</div>
+  <div class="links-of-author motion-element">
+      <span class="links-of-author-item">
+        <a href="https://github.com/killlowkey" title="GitHub → https:&#x2F;&#x2F;github.com&#x2F;killlowkey" rel="noopener" target="_blank"><i class="fa fa-fw fa-github"></i>GitHub</a>
+      </span>
+  </div>
+
+
+
+      </div>
+
+    </div>
+  </aside>
+  <div id="sidebar-dimmer"></div>
+
+
+      </div>
+    </main>
+
+    <footer class="footer">
+      <div class="footer-inner">
+        
+
+        
+
+<div class="copyright">
+  
+  &copy; 
+  <span itemprop="copyrightYear">2022</span>
+  <span class="with-love">
+    <i class="fa fa-user"></i>
+  </span>
+  <span class="author" itemprop="copyrightHolder">predicate</span>
+</div>
+  <div class="powered-by">由 <a href="https://hexo.io/" class="theme-link" rel="noopener" target="_blank">Hexo</a> & <a href="https://theme-next.org/" class="theme-link" rel="noopener" target="_blank">NexT.Gemini</a> 强力驱动
+  </div>
+
+        
+
+
+
+
+
+
+
+
+      </div>
+    </footer>
+  </div>
+
+  
+  <script src="/lib/anime.min.js"></script>
+  <script src="/lib/velocity/velocity.min.js"></script>
+  <script src="/lib/velocity/velocity.ui.min.js"></script>
+
+<script src="/js/utils.js"></script>
+
+<script src="/js/motion.js"></script>
+
+
+<script src="/js/schemes/pisces.js"></script>
+
+
+<script src="/js/next-boot.js"></script>
+
+
+
+
+  
+
+
+
+
+  
+<script src="/js/local-search.js"></script>
+
+
+
+
+
+
+
+
+
+
+
+
+
+  
+
+  
+
+</body>
+</html>
